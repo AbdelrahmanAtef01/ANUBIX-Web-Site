@@ -19,6 +19,8 @@ class _FarmViewState extends State<FarmView> {
   // --- YOUR LOCAL ASSETS ---
   final String plantAsset = 'assets/images/plant.png';
   final String robotAsset = 'assets/images/robot.png';
+  final String homeAsset =
+      'assets/images/home.png'; // --- ADDED: Home PNG Asset ---
 
   // --- 3D FARM COLORS ---
   final Color deepDirtPath = const Color(0xFF2C1E16);
@@ -40,11 +42,15 @@ class _FarmViewState extends State<FarmView> {
   static const double pathWidth = 60.0;
   static const double robotSize = 55.0;
 
+  // Track rows/cols globally for the routing calculations
+  int _cachedRows = 4;
+  int _cachedCols = 6;
+
   // --- SPATIAL CONTEXT & ROUTING ---
   double? _robotLeft;
   double? _robotTop;
-  int _currentRow = 1;
-  int _currentCol = 1;
+  int _currentRow = 0;
+  int _currentCol = 0;
   bool _isInitialLoad = true;
   bool _isDriving = false;
   int _animationSpeed = 1200;
@@ -64,17 +70,33 @@ class _FarmViewState extends State<FarmView> {
   double _cachedDistRows = 10.0;
   double _cachedDistCols = 10.0;
 
-  double _getCenterPathX(int col) =>
-      pathWidth +
-      ((col - 1) * (cellWidth + pathWidth)) +
-      (cellWidth / 2) -
-      (robotSize / 2);
-  double _getBottomPathY(int row) =>
-      pathWidth +
-      ((row - 1) * (cellHeight + pathWidth)) +
-      cellHeight +
-      (pathWidth / 2) -
-      (robotSize / 2);
+  double _getCenterPathX(int col) {
+    if (col == 0) {
+      // Center the home base path
+      final double totalFieldWidth =
+          (_cachedCols * cellWidth) + ((_cachedCols + 1) * pathWidth);
+      return (totalFieldWidth / 2) - (robotSize / 2);
+    }
+    return pathWidth +
+        ((col - 1) * (cellWidth + pathWidth)) +
+        (cellWidth / 2) -
+        (robotSize / 2);
+  }
+
+  double _getBottomPathY(int row) {
+    final double topOffset =
+        cellHeight + pathWidth; // Space reserved for Home Base
+    if (row == 0) {
+      // Park right beneath Home Base
+      return pathWidth + cellHeight + (pathWidth / 2) - (robotSize / 2);
+    }
+    return topOffset +
+        pathWidth +
+        ((row - 1) * (cellHeight + pathWidth)) +
+        cellHeight +
+        (pathWidth / 2) -
+        (robotSize / 2);
+  }
 
   @override
   void initState() {
@@ -106,20 +128,11 @@ class _FarmViewState extends State<FarmView> {
               );
               if (parts.length == 2) {
                 // TRANSLATION: DB (Physical CM) -> UI (Logical Grid)
-                double physX = double.tryParse(parts[0]) ?? _cachedDistRows;
-                double physY = double.tryParse(parts[1]) ?? _cachedDistCols;
+                int targetRow = int.tryParse(parts[0].trim()) ?? 0;
+                int targetCol = int.tryParse(parts[1].trim()) ?? 0;
 
-                // Divide by distance to get grid cell, round to nearest whole cell
-                int targetRow =
-                    (physX / (_cachedDistRows > 0 ? _cachedDistRows : 1))
-                        .round();
-                int targetCol =
-                    (physY / (_cachedDistCols > 0 ? _cachedDistCols : 1))
-                        .round();
-
-                // Failsafe to keep robot on the grid
-                if (targetRow < 1) targetRow = 1;
-                if (targetCol < 1) targetCol = 1;
+                if (targetRow < 0) targetRow = 0;
+                if (targetCol < 0) targetCol = 0;
 
                 _driveRobotTo(targetRow, targetCol);
               }
@@ -164,9 +177,6 @@ class _FarmViewState extends State<FarmView> {
     super.dispose();
   }
 
-  // ==========================================
-  // UPDATED: PHYSICAL DISTANCE CHAT AGENT
-  // ==========================================
   Future<void> _sendMessageToAgent() async {
     final text = _chatController.text.trim();
     if (text.isEmpty || _currentUser == null) return;
@@ -194,16 +204,8 @@ class _FarmViewState extends State<FarmView> {
     double realX = _selectedRow! * _cachedDistRows;
     double realY = _selectedCol! * _cachedDistCols;
 
-    // ==========================================
-    // --- ADDED: GENERATE IDs LOCALLY INSTANTLY ---
-    // ==========================================
-    final String generatedTaskId =
-        const Uuid().v4(); // Unique ID for the task history
+    final String generatedTaskId = const Uuid().v4();
 
-    // ==========================================
-    // --- MODIFIED: SPLIT THE PROMPT FOR CLEAN UI ---
-    // ==========================================
-    // We isolate the hidden data so the Mock Agent doesn't echo it on the screen!
     String hiddenSystemContext =
         "The exact physical location target is X: ${realX}cm, Y: ${realY}cm. TaskID: $generatedTaskId. RobotID: ${_activeRobotId ?? 'None'}. TaskType: disease. Do not use previous chat history for this command.";
 
@@ -215,26 +217,23 @@ class _FarmViewState extends State<FarmView> {
     // 1. Save User Message
     try {
       await Supabase.instance.client.from('chats').insert({
-        'task_id': generatedTaskId, // --- ADDED: Link message to the task
+        'task_id': generatedTaskId,
         'user_id': _currentUser!.id,
         'sender': 'user',
-        'message': text, // Just the clean text
+        'message': text,
         'session_id': _currentSessionId,
       });
     } catch (e) {
       debugPrint('Database Error (User Msg): $e');
     }
 
-    // ==========================================
-    // --- ADDED: CREATE TASK HISTORY RECORD ---
-    // ==========================================
+    // 2. Create Task History Record
     try {
       await Supabase.instance.client.from('task_history').insert({
         'task_id': generatedTaskId,
         'user_id': _currentUser!.id,
         'robot_id': _activeRobotId,
-        'plant_location': '$realX,$realY',
-        // 'task_type': 'diagnosis', // Hardcoded as you wanted!
+        'plant_location': '$_selectedRow,$_selectedCol',
         'execution_time': DateTime.now().toUtc().toIso8601String(),
         'status': 'incomplete',
         'is_scheduled': false,
@@ -243,16 +242,14 @@ class _FarmViewState extends State<FarmView> {
       debugPrint('Database Error (Task History): $e');
     }
 
-    // 2. Invoke Cloud Edge Function
+    // 3. Invoke Cloud Edge Function
     try {
-      // --- MODIFIED: Using the Split Payload so the UI stays clean!
       final response = await Supabase.instance.client.functions.invoke(
         'anubix_chat',
         body: {
-          "prompt": text, // <--- ONLY THE CLEAN TEXT
-          "history": "", // <--- No history for a new farm command
-          "systemContext":
-              hiddenSystemContext, // <--- Hidden coordinates, IDs, and diagnosis tag
+          "prompt": text,
+          "history": "",
+          "systemContext": hiddenSystemContext,
           "agentName": "ANUBIX",
         },
       );
@@ -260,14 +257,13 @@ class _FarmViewState extends State<FarmView> {
       if (response.status == 200) {
         final agentText = response.data['text'] ?? 'No response text found.';
 
-        // 3. Save Agent Message
+        // 4. Save Agent Message
         try {
           await Supabase.instance.client.from('chats').insert({
-            'task_id':
-                generatedTaskId, // --- ADDED: Link AI's reply to the same task
+            'task_id': generatedTaskId,
             'user_id': _currentUser!.id,
             'sender': 'anubix',
-            'message': agentText, // Clean response from the AI
+            'message': agentText,
             'session_id': _currentSessionId,
           });
         } catch (e) {
@@ -339,7 +335,9 @@ class _FarmViewState extends State<FarmView> {
     }
 
     double targetAisleX;
-    if (_currentCol < targetCol) {
+    if (targetCol == 0) {
+      targetAisleX = _getCenterPathX(0); // Drive to center home column
+    } else if (_currentCol < targetCol) {
       targetAisleX =
           ((targetCol - 1) * (cellWidth + pathWidth)) +
           (pathWidth / 2) -
@@ -388,35 +386,41 @@ class _FarmViewState extends State<FarmView> {
 
   Future<void> _dispatchRobot(String robotId, int r, int c) async {
     try {
-      // TRANSLATION: UI (Logical Grid) -> DB (Physical CM)
+      // Calculate real coords just to show them in the green popup message
       double realX = r * _cachedDistRows;
       double realY = c * _cachedDistCols;
 
       await Supabase.instance.client
           .from('robots')
-          .update({'current_location': '$realX,$realY'})
+          .update({'current_location': '$r,$c'})
           .eq('robot_id', robotId);
 
       if (mounted) {
-        Navigator.pop(context);
+        if (Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '🚀 Anubix routing to Physical Coordinates ($realX, $realY)...',
+              r == 0 && c == 0
+                  ? '🏠 Anubix returning to Home Base (0, 0)...'
+                  : '🚀 Anubix routing to Physical Coordinates ($realX, $realY)...',
             ),
-            backgroundColor: Colors.greenAccent,
+            backgroundColor:
+                r == 0 && c == 0 ? Colors.blueAccent : Colors.greenAccent,
             behavior: SnackBarBehavior.floating,
           ),
         );
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Transmission Failed: $e'),
             backgroundColor: Colors.redAccent,
           ),
         );
+      }
     }
   }
 
@@ -447,40 +451,69 @@ class _FarmViewState extends State<FarmView> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  Container(
-                    height: 80,
-                    width: 80,
-                    decoration: BoxDecoration(
-                      color: Colors.black45,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'Disease\nPhoto',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white54, fontSize: 12),
+              // Fetch the latest photo_1_url dynamically for this specific location
+              Center(
+                child: FutureBuilder<Map<String, dynamic>?>(
+                  future:
+                      Supabase.instance.client
+                          .from('readings')
+                          .select('photo_1_url')
+                          .eq('plant_location', '$r,$c')
+                          .order(
+                            'recorded_at',
+                            ascending: false,
+                          ) // Get the absolute latest record
+                          .limit(1)
+                          .maybeSingle(),
+                  builder: (context, snapshot) {
+                    Widget imageContent;
+
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      imageContent = const Center(
+                        child: CircularProgressIndicator(
+                          color: Colors.greenAccent,
+                          strokeWidth: 2,
+                        ),
+                      );
+                    } else if (snapshot.hasError ||
+                        snapshot.data == null ||
+                        snapshot.data!['photo_1_url'] == null) {
+                      imageContent = const Center(
+                        child: Text(
+                          'No Photo\nAvailable',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white54, fontSize: 12),
+                        ),
+                      );
+                    } else {
+                      imageContent = ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          snapshot.data!['photo_1_url'],
+                          fit: BoxFit.cover,
+                          errorBuilder:
+                              (ctx, err, stack) => const Center(
+                                child: Icon(
+                                  Icons.broken_image,
+                                  color: Colors.white54,
+                                ),
+                              ),
+                        ),
+                      );
+                    }
+
+                    return Container(
+                      height:
+                          120, // Increased size slightly to make the single image look clean
+                      width: 120,
+                      decoration: BoxDecoration(
+                        color: Colors.black45,
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                    ),
-                  ),
-                  Container(
-                    height: 80,
-                    width: 80,
-                    decoration: BoxDecoration(
-                      color: Colors.black45,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'Water\nPhoto',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white54, fontSize: 12),
-                      ),
-                    ),
-                  ),
-                ],
+                      child: imageContent,
+                    );
+                  },
+                ),
               ),
               const SizedBox(height: 20),
               Text(
@@ -489,10 +522,6 @@ class _FarmViewState extends State<FarmView> {
                   color: statusColor,
                   fontWeight: FontWeight.bold,
                 ),
-              ),
-              const Text(
-                'Harvest: In Progress',
-                style: TextStyle(color: Colors.white70),
               ),
             ],
           ),
@@ -526,13 +555,14 @@ class _FarmViewState extends State<FarmView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_currentUser == null)
+    if (_currentUser == null) {
       return const Center(
         child: Text(
           "Authentication required.",
           style: TextStyle(color: Colors.white),
         ),
       );
+    }
 
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _profileStream,
@@ -547,17 +577,22 @@ class _FarmViewState extends State<FarmView> {
         final int rows = profile['grid_rows'] ?? 4;
         final int cols = profile['grid_columns'] ?? 6;
 
-        // Quietly update our cached physical distances for translation mapping
+        _cachedRows = rows;
+        _cachedCols = cols;
+
         _cachedDistRows =
             (profile['distance_between_rows'] as num?)?.toDouble() ?? 10.0;
         _cachedDistCols =
             (profile['distance_between_columns'] as num?)?.toDouble() ??
             _cachedDistRows;
 
+        // Calculate new Field Heights to accommodate centered Home Base
+        final double topOffset =
+            cellHeight + pathWidth; // Extra space for home base
         final double totalFieldWidth =
             (cols * cellWidth) + ((cols + 1) * pathWidth);
         final double totalFieldHeight =
-            (rows * cellHeight) + ((rows + 1) * pathWidth);
+            (rows * cellHeight) + ((rows + 1) * pathWidth) + topOffset;
 
         return Column(
           children: [
@@ -656,7 +691,13 @@ class _FarmViewState extends State<FarmView> {
                         child: Stack(
                           children: [
                             GridView.builder(
-                              padding: const EdgeInsets.all(pathWidth),
+                              // Shifted the grid down by `topOffset` to make room for Home
+                              padding: EdgeInsets.only(
+                                top: pathWidth + topOffset,
+                                left: pathWidth,
+                                right: pathWidth,
+                                bottom: pathWidth,
+                              ),
                               physics: const NeverScrollableScrollPhysics(),
                               gridDelegate:
                                   SliverGridDelegateWithFixedCrossAxisCount(
@@ -670,105 +711,186 @@ class _FarmViewState extends State<FarmView> {
                                 int r = (index ~/ cols) + 1;
                                 int c = (index % cols) + 1;
 
-                                Color statusColor = Colors.greenAccent;
-                                String statusText = "Normal";
-                                if (index % 7 == 0) {
-                                  statusColor = Colors.redAccent;
-                                  statusText = "Disease Detected";
-                                } else if (index % 5 == 0) {
-                                  statusColor = Colors.lightBlueAccent;
-                                  statusText = "High Water Stress";
-                                }
+                                // Fetch the dynamic readings data for this specific plant
+                                return FutureBuilder<Map<String, dynamic>?>(
+                                  future:
+                                      Supabase.instance.client
+                                          .from('readings')
+                                          .select('disease_detected')
+                                          .eq('plant_location', '$r,$c')
+                                          .order(
+                                            'recorded_at',
+                                            ascending: false,
+                                          )
+                                          .limit(1)
+                                          .maybeSingle(),
+                                  builder: (context, snapshot) {
+                                    Color statusColor =
+                                        Colors
+                                            .amberAccent; // Yellow for unknown
+                                    String statusText = "Unknown";
 
-                                return MouseRegion(
-                                  onEnter: (_) {
-                                    _hoverTimer = Timer(
-                                      const Duration(milliseconds: 1000),
-                                      () {
-                                        _showPlantDetails(
-                                          r,
-                                          c,
-                                          statusColor,
-                                          statusText,
+                                    if (snapshot.connectionState ==
+                                        ConnectionState.waiting) {
+                                      statusColor = Colors.white54;
+                                      statusText = "Checking...";
+                                    } else if (snapshot.hasData &&
+                                        snapshot.data != null) {
+                                      final isDiseased =
+                                          snapshot.data!['disease_detected'];
+                                      if (isDiseased == true) {
+                                        statusColor = Colors.redAccent;
+                                        statusText = "Diseased";
+                                      } else if (isDiseased == false) {
+                                        statusColor = Colors.greenAccent;
+                                        statusText = "Normal";
+                                      }
+                                    }
+
+                                    return MouseRegion(
+                                      onEnter: (_) {
+                                        _hoverTimer = Timer(
+                                          const Duration(milliseconds: 2000),
+                                          () {
+                                            _showPlantDetails(
+                                              r,
+                                              c,
+                                              statusColor,
+                                              statusText,
+                                            );
+                                          },
                                         );
                                       },
+                                      onExit: (_) {
+                                        _hoverTimer?.cancel();
+                                      },
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          setState(() {
+                                            _selectedPlantZone =
+                                                'Zone ($r, $c)';
+                                            _selectedRow = r;
+                                            _selectedCol = c;
+                                          });
+                                        },
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            color: raisedDirtBed,
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                            border: Border.all(
+                                              color: bedBorder,
+                                            ),
+                                          ),
+                                          child: Stack(
+                                            alignment: Alignment.center,
+                                            children: [
+                                              Image.asset(
+                                                plantAsset,
+                                                fit: BoxFit.contain,
+                                              ),
+                                              Positioned(
+                                                top: 6,
+                                                left: 6,
+                                                child: Container(
+                                                  width: 12,
+                                                  height: 12,
+                                                  decoration: BoxDecoration(
+                                                    color: statusColor,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                ),
+                                              ),
+                                              Positioned(
+                                                bottom: 6,
+                                                right: 6,
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 4,
+                                                        vertical: 2,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.black
+                                                        .withOpacity(0.6),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          4,
+                                                        ),
+                                                  ),
+                                                  child: Text(
+                                                    '($r,$c)',
+                                                    style: const TextStyle(
+                                                      color: Colors.white70,
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
                                     );
                                   },
-                                  onExit: (_) {
-                                    _hoverTimer?.cancel();
-                                  },
-                                  child: GestureDetector(
-                                    onTap: () {
-                                      // SAVING THE REAL GRID COORDINATES TO MEMORY
-                                      setState(() {
-                                        _selectedPlantZone = 'Zone ($r, $c)';
-                                        _selectedRow = r;
-                                        _selectedCol = c;
-                                      });
-                                    },
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: raisedDirtBed,
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(color: bedBorder),
-                                      ),
-                                      child: Stack(
-                                        alignment: Alignment.center,
-                                        children: [
-                                          Image.asset(
-                                            plantAsset,
-                                            fit: BoxFit.contain,
-                                          ),
-                                          Positioned(
-                                            top: 6,
-                                            left: 6,
-                                            child: Container(
-                                              width: 12,
-                                              height: 12,
-                                              decoration: BoxDecoration(
-                                                color: statusColor,
-                                                shape: BoxShape.circle,
-                                              ),
-                                            ),
-                                          ),
-                                          Positioned(
-                                            bottom: 6,
-                                            right: 6,
-                                            child: Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 4,
-                                                    vertical: 2,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                color: Colors.black.withOpacity(
-                                                  0.6,
-                                                ),
-                                                borderRadius:
-                                                    BorderRadius.circular(4),
-                                              ),
-                                              child: Text(
-                                                '($r,$c)',
-                                                style: const TextStyle(
-                                                  color: Colors.white70,
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
                                 );
                               },
                             ),
+
+                            // ==========================================
+                            // --- HOME BASE UI WIDGET (0,0) ---
+                            // ==========================================
+                            Positioned(
+                              top: pathWidth, // 60px down from absolute top
+                              left:
+                                  (totalFieldWidth / 2) -
+                                  (cellWidth / 2), // Perfectly centered
+                              child: Container(
+                                width:
+                                    cellWidth, // Size matches the plant cells exactly
+                                height: cellHeight,
+                                decoration: BoxDecoration(
+                                  color: Colors.blueGrey.withOpacity(0.3),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: Colors.lightBlueAccent,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Expanded(
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(6.0),
+                                        child: Image.asset(
+                                          homeAsset,
+                                          fit: BoxFit.contain,
+                                        ),
+                                      ),
+                                    ),
+                                    const Text(
+                                      'HOME (0,0)',
+                                      style: TextStyle(
+                                        color: Colors.lightBlueAccent,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                  ],
+                                ),
+                              ),
+                            ),
+
                             AnimatedPositioned(
                               duration: Duration(milliseconds: _animationSpeed),
                               curve: Curves.easeInOut,
-                              left: _robotLeft ?? _getCenterPathX(1),
-                              top: _robotTop ?? _getBottomPathY(1),
+                              left: _robotLeft ?? _getCenterPathX(0),
+                              top: _robotTop ?? _getBottomPathY(0),
                               child: SizedBox(
                                 width: robotSize,
                                 height: robotSize,
@@ -862,7 +984,7 @@ class _FarmViewState extends State<FarmView> {
                   itemCount:
                       _chatMessages.length + (_isWaitingForAgent ? 1 : 0),
                   itemBuilder: (context, index) {
-                    if (index == _chatMessages.length)
+                    if (index == _chatMessages.length) {
                       return const SizedBox(
                         height: 20,
                         width: 20,
@@ -871,6 +993,7 @@ class _FarmViewState extends State<FarmView> {
                           color: Colors.greenAccent,
                         ),
                       );
+                    }
                     final msg = _chatMessages[index];
                     bool isUser = msg['role'] == 'user';
                     return Align(
@@ -923,9 +1046,7 @@ class _FarmViewState extends State<FarmView> {
                   Expanded(
                     child: TextField(
                       controller: _chatController,
-                      enabled:
-                          _selectedPlantZone !=
-                          null, // <-- LOCKED IF NO ZONE SELECTED
+                      enabled: _selectedPlantZone != null,
                       style: TextStyle(
                         color:
                             _selectedPlantZone == null
