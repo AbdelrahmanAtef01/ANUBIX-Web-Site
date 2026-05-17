@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:intl/intl.dart'; // Add this to pubspec.yaml for date formatting
+import 'package:intl/intl.dart';
 
 class HistoryView extends StatefulWidget {
   const HistoryView({super.key});
@@ -14,18 +14,8 @@ class _HistoryViewState extends State<HistoryView> {
   String _sortBy = "execution_time"; // Default sort
   bool _ascending = false; // Newest first
 
-  // --- UI ICON LOGIC ---
-  IconData _getIconForTask(String type) {
-    // DELETED: The entire switch statement handling 'water', 'scan_plant', 'alert', 'navigation'.
-    // ADDED: Automatically returning a warning icon since all tasks are now considered 'disease'.
-    return Icons.warning_amber_rounded;
-  }
-
-  Color _getColorForTask(String type) {
-    // DELETED: The if-statements checking for 'alert', 'water', and 'scan'.
-    // ADDED: Automatically returning redAccent to signify a disease/alert.
-    return Colors.redAccent;
-  }
+  // DELETED: _getIconForTask() - Logic moved into FutureBuilder
+  // DELETED: _getColorForTask() - Logic moved into FutureBuilder
 
   @override
   Widget build(BuildContext context) {
@@ -83,8 +73,9 @@ class _HistoryViewState extends State<HistoryView> {
                   .stream(primaryKey: ['task_id'])
                   .order(_sortBy, ascending: _ascending),
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting)
+                if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
+                }
 
                 var logs = snapshot.data ?? [];
 
@@ -105,10 +96,11 @@ class _HistoryViewState extends State<HistoryView> {
                           .toList();
                 }
 
-                if (logs.isEmpty)
+                if (logs.isEmpty) {
                   return const Center(
                     child: Text("No records found in command history."),
                   );
+                }
 
                 return ListView.separated(
                   itemCount: logs.length,
@@ -127,90 +119,136 @@ class _HistoryViewState extends State<HistoryView> {
     );
   }
 
-  // --- LOG ITEM UI (Matching your screenshot) ---
+  // --- LOG ITEM UI ---
   Widget _buildLogItem(Map<String, dynamic> log) {
-    // DELETED: final type = log['task_type'] ?? 'Unknown';
-    // MODIFIED: Hardcoded the type variable to 'disease' as requested.
     final type = 'disease';
-
+    final taskId = log['task_id']?.toString() ?? '';
     final location = log['plant_location'] ?? 'N/A';
     final status = log['status'] ?? 'Completed';
     final time = DateTime.parse(log['execution_time']).toLocal();
     final timeStr = DateFormat('MMM d, hh:mm a').format(time);
 
-    final color = _getColorForTask(type.toLowerCase());
+    // MODIFIED: The FutureBuilder now wraps the entire Container
+    // so it can dynamically update the border colors and icons.
+    return FutureBuilder<Map<String, dynamic>?>(
+      future:
+          Supabase.instance.client
+              .from('readings')
+              .select('disease_detected')
+              .eq('task_id', taskId)
+              .order('recorded_at', ascending: false)
+              .limit(1)
+              .maybeSingle(),
+      builder: (context, snapshot) {
+        // ADDED: Default fallback states (Unknown Diagnosis)
+        String titleText = "Diagnosis: Unknown";
+        Color itemColor = Colors.amberAccent; // Yellow for unknown
+        IconData itemIcon = Icons.warning_amber_rounded; // Warning for unknown
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.1)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(_getIconForTask(type), color: color, size: 24),
+        // ADDED: Intermediate loading state
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          titleText = "Diagnosis: Checking...";
+          itemColor = Colors.white54;
+          itemIcon = Icons.hourglass_empty;
+        }
+        // ADDED: Logic to parse the boolean and set colors/icons
+        else if (snapshot.hasData && snapshot.data != null) {
+          final isDiseased = snapshot.data!['disease_detected'];
+
+          if (isDiseased == true) {
+            titleText = "Diagnosis: Diseased";
+            itemColor = Colors.redAccent;
+            itemIcon = Icons.warning_amber_rounded;
+          } else if (isDiseased == false) {
+            titleText = "Diagnosis: Normal";
+            itemColor = Colors.greenAccent;
+            itemIcon = Icons.check_circle_outline; // Correct icon for normal
+          } else {
+            // If no reading exists for this task_id, it stays Unknown!
+            titleText = "Diagnosis: Unknown";
+            itemColor = Colors.amberAccent;
+            itemIcon = Icons.warning_amber_rounded;
+          }
+          // If isDiseased is exactly null, it safely defaults to the Yellow/Unknown state above.
+        }
+
+        // Return the full UI block, injecting the dynamic variables
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: itemColor.withOpacity(0.1)),
           ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: itemColor.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(itemIcon, color: itemColor, size: 24),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          titleText,
+                          style: TextStyle(
+                            color: itemColor,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          timeStr,
+                          style: const TextStyle(
+                            color: Colors.white24,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
                     Text(
-                      _formatTaskTitle(type),
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                      _getTaskDescription(type, status),
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 14,
                       ),
                     ),
-                    Text(
-                      timeStr,
-                      style: const TextStyle(
-                        color: Colors.white24,
-                        fontSize: 12,
-                      ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.location_on_outlined,
+                          size: 14,
+                          color: Colors.white24,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          "Location: ($location)",
+                          style: const TextStyle(
+                            color: Colors.white24,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  _getTaskDescription(type, status),
-                  style: const TextStyle(color: Colors.white54, fontSize: 14),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on_outlined,
-                      size: 14,
-                      color: Colors.white24,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      "Location: ($location)",
-                      style: const TextStyle(
-                        color: Colors.white24,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -263,15 +301,7 @@ class _HistoryViewState extends State<HistoryView> {
     );
   }
 
-  String _formatTaskTitle(String type) {
-    // DELETED: Checks for 'scan_plant' and 'water'.
-    // ADDED: A custom formatted title specifically for the disease type.
-    return "Disease";
-  }
-
   String _getTaskDescription(String type, String status) {
-    // DELETED: Checks for 'water' and 'scan_plant'.
-    // ADDED: A custom description specifically for the disease type, including the current status.
-    return "Plant anomaly identified. Current handling status: $status.";
+    return "Current task status: $status.";
   }
 }
