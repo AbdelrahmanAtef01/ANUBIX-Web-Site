@@ -65,12 +65,11 @@ class _TasksViewState extends State<TasksView> {
 
   Future<String?> _getRobotId() async {
     try {
-      final response =
-          await Supabase.instance.client
-              .from('robots')
-              .select('robot_id')
-              .limit(1)
-              .single();
+      final response = await Supabase.instance.client
+          .from('robots')
+          .select('robot_id')
+          .limit(1)
+          .single();
       return response['robot_id'] as String;
     } catch (e) {
       debugPrint('No robot found: $e');
@@ -84,10 +83,9 @@ class _TasksViewState extends State<TasksView> {
   }) async {
     final isEditing = existingTask != null;
 
-    final String initialLocation =
-        isEditing
-            ? _physicalToLogical(existingTask['plant_location'] ?? '')
-            : '';
+    final String initialLocation = isEditing
+        ? existingTask['plant_location'] ?? ''
+        : '';
 
     // --- REMOVED: typeController ---
     final locationController = TextEditingController(text: initialLocation);
@@ -192,8 +190,9 @@ class _TasksViewState extends State<TasksView> {
                                 context: context,
                                 initialTime: selectedTime ?? TimeOfDay.now(),
                               );
-                              if (time != null)
+                              if (time != null) {
                                 setState(() => selectedTime = time);
+                              }
                             },
                           ),
                         ),
@@ -236,7 +235,7 @@ class _TasksViewState extends State<TasksView> {
                     // --- ADDED: Auto-assign task type behind the scenes ---
                     // final type = isEditing ? existingTask['task_type'] : 'disease';
 
-                    final physicalLocation = _logicalToPhysical(location);
+                    // final physicalLocation = _logicalToPhysical(location);
                     final finalDateTime = DateTime(
                       selectedDate!.year,
                       selectedDate!.month,
@@ -244,15 +243,16 @@ class _TasksViewState extends State<TasksView> {
                       selectedTime!.hour,
                       selectedTime!.minute,
                     );
-                    final scheduledIsoString =
-                        finalDateTime.toUtc().toIso8601String();
+                    final scheduledIsoString = finalDateTime
+                        .toUtc()
+                        .toIso8601String();
 
                     try {
                       if (isEditing) {
                         await Supabase.instance.client
                             .from('scheduled_tasks')
                             .update({
-                              'plant_location': physicalLocation,
+                              'plant_location': location,
                               'scheduled_time': scheduledIsoString,
                               'notification_sent': false,
                             })
@@ -264,7 +264,7 @@ class _TasksViewState extends State<TasksView> {
                             .insert({
                               'user_id': _currentUser?.id,
                               'robot_id': robotId,
-                              'plant_location': physicalLocation,
+                              'plant_location': location,
                               'scheduled_time': scheduledIsoString,
                               'notification_sent': false,
                             });
@@ -351,38 +351,39 @@ class _TasksViewState extends State<TasksView> {
                 child: StreamBuilder<List<Map<String, dynamic>>>(
                   stream: _tasksStream,
                   builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting)
+                    if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(
                         child: CircularProgressIndicator(
                           color: Colors.greenAccent,
                         ),
                       );
+                    }
                     final tasks = snapshot.data ?? [];
-                    if (tasks.isEmpty)
+                    if (tasks.isEmpty) {
                       return const Center(
                         child: Text(
                           'No scheduled tasks. ANUBIX is on standby.',
                           style: TextStyle(color: Colors.white54, fontSize: 18),
                         ),
                       );
+                    }
 
                     return ListView.separated(
                       itemCount: tasks.length,
-                      separatorBuilder:
-                          (context, index) =>
-                              const Divider(color: Colors.white12, height: 1),
+                      separatorBuilder: (context, index) =>
+                          const Divider(color: Colors.white12, height: 1),
                       itemBuilder: (context, index) {
                         final task = tasks[index];
                         final isSent =
                             task['notification_sent'] as bool? ?? false;
-                        final scheduledText =
-                            task['scheduled_time'] != null
-                                ? "${DateTime.parse(task['scheduled_time']).toLocal().month}/${DateTime.parse(task['scheduled_time']).toLocal().day} at ${DateTime.parse(task['scheduled_time']).toLocal().hour}:${DateTime.parse(task['scheduled_time']).toLocal().minute.toString().padLeft(2, '0')}"
-                                : "Pending";
+                        final scheduledText = task['scheduled_time'] != null
+                            ? "${DateTime.parse(task['scheduled_time']).toLocal().month}/${DateTime.parse(task['scheduled_time']).toLocal().day} at ${DateTime.parse(task['scheduled_time']).toLocal().hour}:${DateTime.parse(task['scheduled_time']).toLocal().minute.toString().padLeft(2, '0')}"
+                            : "Pending";
 
-                        final logicalLocUI = _physicalToLogical(
-                          task['plant_location'] ?? '',
-                        );
+                        final logicalLocUI =
+                            task['plant_location'] ?? ''; //_physicalToLogical(
+                        //   task['plant_location'] ?? '',
+                        // );
 
                         return ListTile(
                           // LOCKED VISUAL INDICATOR - NO ONTAP
@@ -436,11 +437,10 @@ class _TasksViewState extends State<TasksView> {
                                   Icons.edit,
                                   color: Colors.white54,
                                 ),
-                                onPressed:
-                                    () => _showTaskDialog(
-                                      context,
-                                      existingTask: task,
-                                    ),
+                                onPressed: () => _showTaskDialog(
+                                  context,
+                                  existingTask: task,
+                                ),
                               ),
                               IconButton(
                                 icon: const Icon(
