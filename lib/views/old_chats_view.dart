@@ -61,7 +61,7 @@ class _OldChatsViewState extends State<OldChatsView> {
     _chatStream = Supabase.instance.client
         .from('chats')
         .stream(primaryKey: ['chat_id'])
-        .eq('session_id', _selectedSession!) 
+        .eq('session_id', _selectedSession!)
         .order('created_at', ascending: true);
   }
 
@@ -75,14 +75,14 @@ class _OldChatsViewState extends State<OldChatsView> {
   // ==========================================
   // UPDATED: CONVERSATIONAL AGENT WITH MEMORY
   // ==========================================
- Future<void> _sendMessage() async {
+  Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty || _isWaitingForAgent || _selectedSession == null) return;
 
     setState(() {
       _isWaitingForAgent = true;
     });
-    
+
     _messageController.clear();
     _scrollToBottom();
 
@@ -91,21 +91,26 @@ class _OldChatsViewState extends State<OldChatsView> {
     // --- 1. FETCH CONTEXT & IDs ---
     String? historicalTaskId;
     String? historicalRobotId;
-    String historyLog = ''; 
+
+    // MODIFIED: Changed from a String to a List of Maps to match the backend expectation
+    List<Map<String, String>> messagesArray = [];
 
     try {
       final historyData = await Supabase.instance.client
           .from('chats')
           .select('sender, message, task_id')
           .eq('session_id', _selectedSession!)
-          .order('created_at', ascending: false)
+          .order(
+            'created_at',
+            ascending: false,
+          ) // Latest first to get the 5 most recent
           .limit(5);
 
       if (historyData.isNotEmpty) {
         for (var msg in historyData) {
           if (msg['task_id'] != null) {
             historicalTaskId = msg['task_id'];
-            break; 
+            break;
           }
         }
 
@@ -121,29 +126,35 @@ class _OldChatsViewState extends State<OldChatsView> {
           }
         }
 
+        // MODIFIED: Reverse the list so it's in ascending chronological order
         final recentMessages = historyData.reversed.toList();
-        historyLog = recentMessages.map((msg) => "${msg['sender'] == 'user' ? 'User' : 'Anubix'}: ${msg['message']}").join("\n");
+
+        // Build the messages array for the Edge Function body
+        messagesArray = recentMessages.map<Map<String, String>>((msg) {
+          // Normalize sender names to 'user' or 'anubix'
+          final role = (msg['sender'] == 'user') ? 'user' : 'anubix';
+          return {"role": role, "content": msg['message'] ?? ''};
+        }).toList();
       }
     } catch (e) {
       debugPrint('Warning: Could not fetch history for context: $e');
     }
 
-    // ==========================================
-    // --- MODIFIED: APPENDED THE TASK TYPE HERE ---
-    // ==========================================
-    String hiddenSystemContext = "TaskID: ${historicalTaskId ?? 'None'}. RobotID: ${historicalRobotId ?? 'None'}. TaskType: Disease";
+    String hiddenSystemContext =
+        "Task Id: ${historicalTaskId ?? 'None'}. Robot Id: ${historicalRobotId ?? 'None'}, TaskType: Disease.";
 
     debugPrint('\n========== ANUBIX COMM START ==========');
     debugPrint('[LOCAL] CLEAN TEXT (Saved to DB): $text');
-    debugPrint('[LOCAL] HIDDEN CONTEXT (Sent to Cloud):\n$hiddenSystemContext\n$historyLog');
+    debugPrint('[LOCAL] HIDDEN CONTEXT (Sent to Cloud):\n$hiddenSystemContext');
+    debugPrint('[LOCAL] HISTORY ARRAY:\n$messagesArray');
 
     // --- 2. SAVE USER MESSAGE ---
     try {
       await Supabase.instance.client.from('chats').insert({
-        'sender': 'user', 
-        'message': text, // Just saving the clean text ("smo 3leko")
-        'session_id': _selectedSession, 
-        'task_id': historicalTaskId, 
+        'sender': 'user',
+        'message': text,
+        'session_id': _selectedSession,
+        'task_id': historicalTaskId,
         if (currentUser != null) 'user_id': currentUser.id,
       });
     } catch (e) {
@@ -153,14 +164,14 @@ class _OldChatsViewState extends State<OldChatsView> {
     // --- 3. FETCH FROM SUPABASE EDGE FUNCTION ---
     String agentText = '';
     try {
-      // --- MODIFIED: Sending the SPLIT payload!
+      // MODIFIED: Passing the `messages` array exactly as you requested
       final response = await Supabase.instance.client.functions.invoke(
-        'anubix_chat',
+        'anubix_old_chats',
         body: {
-          "prompt": text,                       // <--- ONLY THE CLEAN TEXT 
-          "history": historyLog,                // <--- Hidden History
-          "systemContext": hiddenSystemContext, // <--- Hidden IDs + Disease Task Type
-          "agentName": "ANUBIX"
+          "prompt": text,
+          "messages": messagesArray, // <--- Array of {role, content} maps
+          "systemContext": hiddenSystemContext,
+          'session_id': _selectedSession,
         },
       );
 
@@ -177,9 +188,9 @@ class _OldChatsViewState extends State<OldChatsView> {
     try {
       await Supabase.instance.client.from('chats').insert({
         'sender': 'anubix',
-        'message': agentText, // Only saving the clean response from the agent
+        'message': agentText,
         'session_id': _selectedSession,
-        'task_id': historicalTaskId, 
+        'task_id': historicalTaskId,
         if (currentUser != null) 'user_id': currentUser.id,
       });
     } catch (dbError) {
@@ -194,15 +205,15 @@ class _OldChatsViewState extends State<OldChatsView> {
       }
     }
   }
-  
+
   void _showError(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(message, style: const TextStyle(color: Colors.white)), 
+          content: Text(message, style: const TextStyle(color: Colors.white)),
           backgroundColor: Colors.redAccent,
           duration: const Duration(seconds: 5),
-        )
+        ),
       );
     }
   }
@@ -229,122 +240,240 @@ class _OldChatsViewState extends State<OldChatsView> {
           // --- LEFT PANEL: Chat History List ---
           Container(
             width: 250,
-            decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white12)),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A1A1A),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white12),
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Padding(padding: EdgeInsets.all(20.0), child: Text('Sessions', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white))),
+                const Padding(
+                  padding: EdgeInsets.all(20.0),
+                  child: Text(
+                    'Sessions',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
                 const Divider(color: Colors.white24, height: 1),
                 Expanded(
-                  child: _sessions.isEmpty 
-                    ? const Center(child: Text("No chat history yet.", style: TextStyle(color: Colors.white54)))
-                    : ListView.builder(
-                    itemCount: _sessions.length,
-                    itemBuilder: (context, index) {
-                      final sessionName = _sessions[index];
-                      final isSelected = sessionName == _selectedSession;
+                  child: _sessions.isEmpty
+                      ? const Center(
+                          child: Text(
+                            "No chat history yet.",
+                            style: TextStyle(color: Colors.white54),
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: _sessions.length,
+                          itemBuilder: (context, index) {
+                            final sessionName = _sessions[index];
+                            final isSelected = sessionName == _selectedSession;
 
-                      return _buildChatListItem(
-                        sessionName, 
-                        isSelected: isSelected,
-                        onTap: () {
-                          if (!isSelected) {
-                            setState(() {
-                              _selectedSession = sessionName;
-                              _setupChatStream(); 
-                            });
-                          }
-                        }
-                      );
-                    },
-                  ),
+                            return _buildChatListItem(
+                              sessionName,
+                              isSelected: isSelected,
+                              onTap: () {
+                                if (!isSelected) {
+                                  setState(() {
+                                    _selectedSession = sessionName;
+                                    _setupChatStream();
+                                  });
+                                }
+                              },
+                            );
+                          },
+                        ),
                 ),
               ],
             ),
           ),
-          
-          const SizedBox(width: 32), 
-          
+
+          const SizedBox(width: 32),
+
           // --- RIGHT PANEL: The Active Chat Window ---
           Expanded(
             child: Container(
-              decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white12)),
-              child: _selectedSession == null 
-              ? const Center(child: Text("Select a session to view.", style: TextStyle(color: Colors.white54)))
-              : Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(20), decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Colors.white24))),
-                    child: Row(children: [const Icon(Icons.terminal, color: Colors.lightBlueAccent), const SizedBox(width: 10), Text('Anubix Command Terminal: $_selectedSession', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.lightBlueAccent))]),
-                  ),
-                  
-                  // --- REAL-TIME MESSAGES AREA ---
-                  Expanded(
-                    child: StreamBuilder<List<Map<String, dynamic>>>(
-                      stream: _chatStream,
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.lightBlueAccent));
-                        if (snapshot.hasError) return Center(child: Text('Database Error: ${snapshot.error}', style: const TextStyle(color: Colors.redAccent)));
-                        final messages = snapshot.data ?? [];
-                        if (messages.isEmpty && !_isWaitingForAgent) return const Center(child: Text('No messages yet. Send a command to Anubix.', style: TextStyle(color: Colors.white54)));
-
-                        WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-
-                        return ListView.builder(
-                          controller: _scrollController, padding: const EdgeInsets.all(24), 
-                          itemCount: messages.length + (_isWaitingForAgent ? 1 : 0),
-                          itemBuilder: (context, index) {
-                            
-                            // SHOW THE INLINE LOADING SPINNER
-                            if (index == messages.length && _isWaitingForAgent) {
-                              return const Align(
-                                alignment: Alignment.centerLeft,
-                                child: Padding(
-                                  padding: EdgeInsets.all(8.0),
-                                  child: SizedBox(height: 15, width: 15, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.greenAccent)),
-                                ),
-                              );
-                            }
-
-                            final msg = messages[index];
-                            final isUser = msg['sender'] == 'user';
-                            final text = msg['message'] ?? '';
-                            return _buildMessageBubble(text, isUser: isUser);
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                  
-                  // --- TEXT INPUT AREA ---
-                  Container(
-                    height: 50,
-                    margin: const EdgeInsets.only(left: 20, right: 20, bottom: 20, top: 10),
-                    decoration: BoxDecoration(color: const Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(30), border: Border.all(color: Colors.white24)),
-                    child: Row(
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A1A1A),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: _selectedSession == null
+                  ? const Center(
+                      child: Text(
+                        "Select a session to view.",
+                        style: TextStyle(color: Colors.white54),
+                      ),
+                    )
+                  : Column(
                       children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _messageController,
-                            style: const TextStyle(color: Colors.white),
-                            onSubmitted: (_) => _sendMessage(), 
-                            decoration: const InputDecoration(hintText: 'Talk to Anubix Agent...', hintStyle: TextStyle(color: Colors.white54, fontSize: 14), border: InputBorder.none, contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 14)),
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: const BoxDecoration(
+                            border: Border(
+                              bottom: BorderSide(color: Colors.white24),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.terminal,
+                                color: Colors.lightBlueAccent,
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'Anubix Command Terminal: $_selectedSession',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.lightBlueAccent,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        IconButton(icon: const Icon(Icons.mic, color: Colors.lightBlueAccent, size: 20), onPressed: () {}),
+
+                        // --- REAL-TIME MESSAGES AREA ---
+                        Expanded(
+                          child: StreamBuilder<List<Map<String, dynamic>>>(
+                            stream: _chatStream,
+                            builder: (context, snapshot) {
+                              if (snapshot.connectionState ==
+                                  ConnectionState.waiting)
+                                return const Center(
+                                  child: CircularProgressIndicator(
+                                    color: Colors.lightBlueAccent,
+                                  ),
+                                );
+                              if (snapshot.hasError)
+                                return Center(
+                                  child: Text(
+                                    'Database Error: ${snapshot.error}',
+                                    style: const TextStyle(
+                                      color: Colors.redAccent,
+                                    ),
+                                  ),
+                                );
+                              final messages = snapshot.data ?? [];
+                              if (messages.isEmpty && !_isWaitingForAgent)
+                                return const Center(
+                                  child: Text(
+                                    'No messages yet. Send a command to Anubix.',
+                                    style: TextStyle(color: Colors.white54),
+                                  ),
+                                );
+
+                              WidgetsBinding.instance.addPostFrameCallback(
+                                (_) => _scrollToBottom(),
+                              );
+
+                              return ListView.builder(
+                                controller: _scrollController,
+                                padding: const EdgeInsets.all(24),
+                                itemCount:
+                                    messages.length +
+                                    (_isWaitingForAgent ? 1 : 0),
+                                itemBuilder: (context, index) {
+                                  // SHOW THE INLINE LOADING SPINNER
+                                  if (index == messages.length &&
+                                      _isWaitingForAgent) {
+                                    return const Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Padding(
+                                        padding: EdgeInsets.all(8.0),
+                                        child: SizedBox(
+                                          height: 15,
+                                          width: 15,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.greenAccent,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }
+
+                                  final msg = messages[index];
+                                  final isUser = msg['sender'] == 'user';
+                                  final text = msg['message'] ?? '';
+                                  return _buildMessageBubble(
+                                    text,
+                                    isUser: isUser,
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                        ),
+
+                        // --- TEXT INPUT AREA ---
                         Container(
-                          margin: const EdgeInsets.only(right: 6),
-                          decoration: const BoxDecoration(color: Colors.lightBlueAccent, shape: BoxShape.circle),
-                          child: IconButton(
-                            icon: const Icon(Icons.send, color: Colors.black, size: 18), 
-                            onPressed: _sendMessage, 
+                          height: 50,
+                          margin: const EdgeInsets.only(
+                            left: 20,
+                            right: 20,
+                            bottom: 20,
+                            top: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1E1E1E),
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(color: Colors.white24),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _messageController,
+                                  style: const TextStyle(color: Colors.white),
+                                  onSubmitted: (_) => _sendMessage(),
+                                  decoration: const InputDecoration(
+                                    hintText: 'Talk to Anubix Agent...',
+                                    hintStyle: TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 14,
+                                    ),
+                                    border: InputBorder.none,
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 14,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.mic,
+                                  color: Colors.lightBlueAccent,
+                                  size: 20,
+                                ),
+                                onPressed: () {},
+                              ),
+                              Container(
+                                margin: const EdgeInsets.only(right: 6),
+                                decoration: const BoxDecoration(
+                                  color: Colors.lightBlueAccent,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: IconButton(
+                                  icon: const Icon(
+                                    Icons.send,
+                                    color: Colors.black,
+                                    size: 18,
+                                  ),
+                                  onPressed: _sendMessage,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ],
-              ),
             ),
           ),
         ],
@@ -352,10 +481,33 @@ class _OldChatsViewState extends State<OldChatsView> {
     );
   }
 
-  Widget _buildChatListItem(String title, {required bool isSelected, required VoidCallback onTap}) {
+  Widget _buildChatListItem(
+    String title, {
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
     return Container(
-      decoration: BoxDecoration(color: isSelected ? Colors.lightBlueAccent.withOpacity(0.1) : Colors.transparent, border: Border(left: BorderSide(color: isSelected ? Colors.lightBlueAccent : Colors.transparent, width: 4))),
-      child: ListTile(title: Text(title, style: TextStyle(color: isSelected ? Colors.lightBlueAccent : Colors.white70, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)), onTap: onTap),
+      decoration: BoxDecoration(
+        color: isSelected
+            ? Colors.lightBlueAccent.withOpacity(0.1)
+            : Colors.transparent,
+        border: Border(
+          left: BorderSide(
+            color: isSelected ? Colors.lightBlueAccent : Colors.transparent,
+            width: 4,
+          ),
+        ),
+      ),
+      child: ListTile(
+        title: Text(
+          title,
+          style: TextStyle(
+            color: isSelected ? Colors.lightBlueAccent : Colors.white70,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+        onTap: onTap,
+      ),
     );
   }
 
@@ -363,15 +515,27 @@ class _OldChatsViewState extends State<OldChatsView> {
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 8), 
-        constraints: const BoxConstraints(maxWidth: 400), 
+        margin: const EdgeInsets.only(bottom: 8),
+        constraints: const BoxConstraints(maxWidth: 400),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: isUser ? Colors.lightBlueAccent.withOpacity(0.2) : Colors.greenAccent.withOpacity(0.2),
+          color: isUser
+              ? Colors.lightBlueAccent.withOpacity(0.2)
+              : Colors.greenAccent.withOpacity(0.2),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: isUser ? Colors.lightBlueAccent.withOpacity(0.5) : Colors.greenAccent.withOpacity(0.5))
+          border: Border.all(
+            color: isUser
+                ? Colors.lightBlueAccent.withOpacity(0.5)
+                : Colors.greenAccent.withOpacity(0.5),
+          ),
         ),
-        child: Text(text, style: TextStyle(color: isUser ? Colors.lightBlueAccent : Colors.greenAccent, fontWeight: FontWeight.w500)),
+        child: Text(
+          text,
+          style: TextStyle(
+            color: isUser ? Colors.lightBlueAccent : Colors.greenAccent,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
       ),
     );
   }

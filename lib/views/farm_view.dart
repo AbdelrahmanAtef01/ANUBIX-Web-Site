@@ -142,27 +142,24 @@ class _FarmViewState extends State<FarmView> {
   }
 
   void _listenForAutomatedBackendTasks() {
-    _consoleSubscription =
-        Supabase.instance.client
-            .channel(
-              'farm_view_listener_${DateTime.now().millisecondsSinceEpoch}',
-            )
-            .onPostgresChanges(
-              event: PostgresChangeEvent.insert,
-              schema: 'public',
-              table: 'chats',
-              callback: (payload) {
-                final sender = payload.newRecord['sender'];
-                final message = payload.newRecord['message'];
+    _consoleSubscription = Supabase.instance.client
+        .channel('farm_view_listener_${DateTime.now().millisecondsSinceEpoch}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'chats',
+          callback: (payload) {
+            final sender = payload.newRecord['sender'];
+            final message = payload.newRecord['message'];
 
-                debugPrint("\n==============================================");
-                debugPrint("🟢 [FARM VIEW] BACKEND TRIGGER DETECTED!");
-                debugPrint("Sender: ${sender.toString().toUpperCase()}");
-                debugPrint("Message: $message");
-                debugPrint("==============================================\n");
-              },
-            )
-            .subscribe();
+            debugPrint("\n==============================================");
+            debugPrint("🟢 [FARM VIEW] BACKEND TRIGGER DETECTED!");
+            debugPrint("Sender: ${sender.toString().toUpperCase()}");
+            debugPrint("Message: $message");
+            debugPrint("==============================================\n");
+          },
+        )
+        .subscribe();
   }
 
   @override
@@ -207,7 +204,7 @@ class _FarmViewState extends State<FarmView> {
     final String generatedTaskId = const Uuid().v4();
 
     String hiddenSystemContext =
-        "The exact physical location target is X: ${realX}cm, Y: ${realY}cm. TaskID: $generatedTaskId. RobotID: ${_activeRobotId ?? 'None'}. TaskType: disease. Do not use previous chat history for this command.";
+        "plant location at x= $realX y= $realY, robot=${_activeRobotId ?? 'None'} task=$generatedTaskId, TaskType: Disease.";
 
     debugPrint('\n========== ANUBIX COMM START ==========');
     debugPrint('[LOCAL] RAW USER TEXT: $text');
@@ -248,9 +245,8 @@ class _FarmViewState extends State<FarmView> {
         'anubix_chat',
         body: {
           "prompt": text,
-          "history": "",
+          "task_id": generatedTaskId,
           "systemContext": hiddenSystemContext,
-          "agentName": "ANUBIX",
         },
       );
 
@@ -406,8 +402,9 @@ class _FarmViewState extends State<FarmView> {
                   ? '🏠 Anubix returning to Home Base (0, 0)...'
                   : '🚀 Anubix routing to Physical Coordinates ($realX, $realY)...',
             ),
-            backgroundColor:
-                r == 0 && c == 0 ? Colors.blueAccent : Colors.greenAccent,
+            backgroundColor: r == 0 && c == 0
+                ? Colors.blueAccent
+                : Colors.greenAccent,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -454,17 +451,16 @@ class _FarmViewState extends State<FarmView> {
               // Fetch the latest photo_1_url dynamically for this specific location
               Center(
                 child: FutureBuilder<Map<String, dynamic>?>(
-                  future:
-                      Supabase.instance.client
-                          .from('readings')
-                          .select('photo_1_url')
-                          .eq('plant_location', '$r,$c')
-                          .order(
-                            'recorded_at',
-                            ascending: false,
-                          ) // Get the absolute latest record
-                          .limit(1)
-                          .maybeSingle(),
+                  future: Supabase.instance.client
+                      .from('readings')
+                      .select('photo_1_url')
+                      .eq('plant_location', '$r,$c')
+                      .order(
+                        'recorded_at',
+                        ascending: false,
+                      ) // Get the absolute latest record
+                      .limit(1)
+                      .maybeSingle(),
                   builder: (context, snapshot) {
                     Widget imageContent;
 
@@ -491,13 +487,12 @@ class _FarmViewState extends State<FarmView> {
                         child: Image.network(
                           snapshot.data!['photo_1_url'],
                           fit: BoxFit.cover,
-                          errorBuilder:
-                              (ctx, err, stack) => const Center(
-                                child: Icon(
-                                  Icons.broken_image,
-                                  color: Colors.white54,
-                                ),
-                              ),
+                          errorBuilder: (ctx, err, stack) => const Center(
+                            child: Icon(
+                              Icons.broken_image,
+                              color: Colors.white54,
+                            ),
+                          ),
                         ),
                       );
                     }
@@ -533,20 +528,20 @@ class _FarmViewState extends State<FarmView> {
                 style: TextStyle(color: Colors.white54),
               ),
             ),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: statusColor.withOpacity(0.2),
-                foregroundColor: statusColor,
-                side: BorderSide(color: statusColor),
-              ),
-              icon: const Icon(Icons.my_location, size: 18),
-              label: const Text('Dispatch Anubix'),
-              onPressed: () {
-                if (_activeRobotId != null) {
-                  _dispatchRobot(_activeRobotId!, r, c);
-                }
-              },
-            ),
+            // ElevatedButton.icon(
+            //   style: ElevatedButton.styleFrom(
+            //     backgroundColor: statusColor.withOpacity(0.2),
+            //     foregroundColor: statusColor,
+            //     side: BorderSide(color: statusColor),
+            //   ),
+            //   icon: const Icon(Icons.my_location, size: 18),
+            //   label: const Text('Dispatch Anubix'),
+            //   onPressed: () {
+            //     if (_activeRobotId != null) {
+            //       _dispatchRobot(_activeRobotId!, r, c);
+            //     }
+            //   },
+            // ),
           ],
         );
       },
@@ -630,15 +625,14 @@ class _FarmViewState extends State<FarmView> {
                           color: Colors.white,
                           fontSize: 14,
                         ),
-                        items:
-                            List.generate(10, (i) => i + 1)
-                                .map(
-                                  (e) => DropdownMenuItem(
-                                    value: e,
-                                    child: Text(e.toString()),
-                                  ),
-                                )
-                                .toList(),
+                        items: List.generate(10, (i) => i + 1)
+                            .map(
+                              (e) => DropdownMenuItem(
+                                value: e,
+                                child: Text(e.toString()),
+                              ),
+                            )
+                            .toList(),
                         onChanged: (val) => _updateGridSize(val!, cols),
                       ),
                       const SizedBox(width: 12),
@@ -653,15 +647,14 @@ class _FarmViewState extends State<FarmView> {
                           color: Colors.white,
                           fontSize: 14,
                         ),
-                        items:
-                            List.generate(10, (i) => i + 1)
-                                .map(
-                                  (e) => DropdownMenuItem(
-                                    value: e,
-                                    child: Text(e.toString()),
-                                  ),
-                                )
-                                .toList(),
+                        items: List.generate(10, (i) => i + 1)
+                            .map(
+                              (e) => DropdownMenuItem(
+                                value: e,
+                                child: Text(e.toString()),
+                              ),
+                            )
+                            .toList(),
                         onChanged: (val) => _updateGridSize(rows, val!),
                       ),
                     ],
@@ -713,21 +706,16 @@ class _FarmViewState extends State<FarmView> {
 
                                 // Fetch the dynamic readings data for this specific plant
                                 return FutureBuilder<Map<String, dynamic>?>(
-                                  future:
-                                      Supabase.instance.client
-                                          .from('readings')
-                                          .select('disease_detected')
-                                          .eq('plant_location', '$r,$c')
-                                          .order(
-                                            'recorded_at',
-                                            ascending: false,
-                                          )
-                                          .limit(1)
-                                          .maybeSingle(),
+                                  future: Supabase.instance.client
+                                      .from('readings')
+                                      .select('disease_detected')
+                                      .eq('plant_location', '$r,$c')
+                                      .order('recorded_at', ascending: false)
+                                      .limit(1)
+                                      .maybeSingle(),
                                   builder: (context, snapshot) {
-                                    Color statusColor =
-                                        Colors
-                                            .amberAccent; // Yellow for unknown
+                                    Color statusColor = Colors
+                                        .amberAccent; // Yellow for unknown
                                     String statusText = "Unknown";
 
                                     if (snapshot.connectionState ==
@@ -997,25 +985,24 @@ class _FarmViewState extends State<FarmView> {
                     final msg = _chatMessages[index];
                     bool isUser = msg['role'] == 'user';
                     return Align(
-                      alignment:
-                          isUser ? Alignment.centerRight : Alignment.centerLeft,
+                      alignment: isUser
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
                       child: Container(
                         margin: const EdgeInsets.only(bottom: 6),
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color:
-                              isUser
-                                  ? Colors.blue.withOpacity(0.2)
-                                  : Colors.green.withOpacity(0.2),
+                          color: isUser
+                              ? Colors.blue.withOpacity(0.2)
+                              : Colors.green.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
                           msg['text']!,
                           style: TextStyle(
-                            color:
-                                isUser
-                                    ? Colors.lightBlueAccent
-                                    : Colors.greenAccent,
+                            color: isUser
+                                ? Colors.lightBlueAccent
+                                : Colors.greenAccent,
                           ),
                         ),
                       ),
@@ -1029,16 +1016,14 @@ class _FarmViewState extends State<FarmView> {
               height: 50,
               margin: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color:
-                    _selectedPlantZone == null
-                        ? const Color(0xFF121212)
-                        : const Color(0xFF1E1E1E),
+                color: _selectedPlantZone == null
+                    ? const Color(0xFF121212)
+                    : const Color(0xFF1E1E1E),
                 borderRadius: BorderRadius.circular(30),
                 border: Border.all(
-                  color:
-                      _selectedPlantZone == null
-                          ? Colors.white10
-                          : Colors.white24,
+                  color: _selectedPlantZone == null
+                      ? Colors.white10
+                      : Colors.white24,
                 ),
               ),
               child: Row(
@@ -1048,22 +1033,19 @@ class _FarmViewState extends State<FarmView> {
                       controller: _chatController,
                       enabled: _selectedPlantZone != null,
                       style: TextStyle(
-                        color:
-                            _selectedPlantZone == null
-                                ? Colors.white30
-                                : Colors.white,
+                        color: _selectedPlantZone == null
+                            ? Colors.white30
+                            : Colors.white,
                       ),
                       onSubmitted: (_) => _sendMessageToAgent(),
                       decoration: InputDecoration(
-                        hintText:
-                            _selectedPlantZone == null
-                                ? 'Select a target zone on the map to unlock chat...'
-                                : 'Command Anubix for $_selectedPlantZone...',
+                        hintText: _selectedPlantZone == null
+                            ? 'Select a target zone on the map to unlock chat...'
+                            : 'Command Anubix for $_selectedPlantZone...',
                         hintStyle: TextStyle(
-                          color:
-                              _selectedPlantZone == null
-                                  ? Colors.white30
-                                  : Colors.white54,
+                          color: _selectedPlantZone == null
+                              ? Colors.white30
+                              : Colors.white54,
                         ),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
@@ -1075,13 +1057,13 @@ class _FarmViewState extends State<FarmView> {
                   IconButton(
                     icon: Icon(
                       Icons.send,
-                      color:
-                          _selectedPlantZone == null
-                              ? Colors.grey
-                              : Colors.lightBlueAccent,
+                      color: _selectedPlantZone == null
+                          ? Colors.grey
+                          : Colors.lightBlueAccent,
                     ),
-                    onPressed:
-                        _selectedPlantZone == null ? null : _sendMessageToAgent,
+                    onPressed: _selectedPlantZone == null
+                        ? null
+                        : _sendMessageToAgent,
                   ),
                 ],
               ),
