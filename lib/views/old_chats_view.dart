@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../theme.dart';
 
 class OldChatsView extends StatefulWidget {
   const OldChatsView({super.key});
@@ -72,27 +73,18 @@ class _OldChatsViewState extends State<OldChatsView> {
     super.dispose();
   }
 
-  // ==========================================
-  // UPDATED: CONVERSATIONAL AGENT WITH MEMORY
-  // ==========================================
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty || _isWaitingForAgent || _selectedSession == null) return;
 
-    setState(() {
-      _isWaitingForAgent = true;
-    });
-
+    setState(() => _isWaitingForAgent = true);
     _messageController.clear();
     _scrollToBottom();
 
     final currentUser = Supabase.instance.client.auth.currentUser;
 
-    // --- 1. FETCH CONTEXT & IDs ---
     String? historicalTaskId;
     String? historicalRobotId;
-
-    // MODIFIED: Changed from a String to a List of Maps to match the backend expectation
     List<Map<String, String>> messagesArray = [];
 
     try {
@@ -100,10 +92,7 @@ class _OldChatsViewState extends State<OldChatsView> {
           .from('chats')
           .select('sender, message, task_id')
           .eq('session_id', _selectedSession!)
-          .order(
-            'created_at',
-            ascending: false,
-          ) // Latest first to get the 5 most recent
+          .order('created_at', ascending: false)
           .limit(5);
 
       if (historyData.isNotEmpty) {
@@ -126,12 +115,8 @@ class _OldChatsViewState extends State<OldChatsView> {
           }
         }
 
-        // MODIFIED: Reverse the list so it's in ascending chronological order
         final recentMessages = historyData.reversed.toList();
-
-        // Build the messages array for the Edge Function body
         messagesArray = recentMessages.map<Map<String, String>>((msg) {
-          // Normalize sender names to 'user' or 'anubix'
           final role = (msg['sender'] == 'user') ? 'user' : 'anubix';
           return {"role": role, "content": msg['message'] ?? ''};
         }).toList();
@@ -148,7 +133,6 @@ class _OldChatsViewState extends State<OldChatsView> {
     debugPrint('[LOCAL] HIDDEN CONTEXT (Sent to Cloud):\n$hiddenSystemContext');
     debugPrint('[LOCAL] HISTORY ARRAY:\n$messagesArray');
 
-    // --- 2. SAVE USER MESSAGE ---
     try {
       await Supabase.instance.client.from('chats').insert({
         'sender': 'user',
@@ -161,15 +145,13 @@ class _OldChatsViewState extends State<OldChatsView> {
       debugPrint('Failed to save your message: $e');
     }
 
-    // --- 3. FETCH FROM SUPABASE EDGE FUNCTION ---
     String agentText = '';
     try {
-      // MODIFIED: Passing the `messages` array exactly as you requested
       final response = await Supabase.instance.client.functions.invoke(
         'anubix_old_chats',
         body: {
           "prompt": text,
-          "messages": messagesArray, // <--- Array of {role, content} maps
+          "messages": messagesArray,
           "systemContext": hiddenSystemContext,
           'session_id': _selectedSession,
         },
@@ -184,7 +166,6 @@ class _OldChatsViewState extends State<OldChatsView> {
       agentText = 'Cloud Proxy Error: $e';
     }
 
-    // --- 4. SAVE AGENT MESSAGE ---
     try {
       await Supabase.instance.client.from('chats').insert({
         'sender': 'anubix',
@@ -197,24 +178,10 @@ class _OldChatsViewState extends State<OldChatsView> {
       debugPrint('DATABASE REJECTED AGENT MESSAGE: $dbError');
     } finally {
       if (mounted) {
-        setState(() {
-          _isWaitingForAgent = false;
-        });
+        setState(() => _isWaitingForAgent = false);
         _scrollToBottom();
         debugPrint('========== ANUBIX COMM END ==========\n');
       }
-    }
-  }
-
-  void _showError(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message, style: const TextStyle(color: Colors.white)),
-          backgroundColor: Colors.redAccent,
-          duration: const Duration(seconds: 5),
-        ),
-      );
     }
   }
 
@@ -237,43 +204,36 @@ class _OldChatsViewState extends State<OldChatsView> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // --- LEFT PANEL: Chat History List ---
           Container(
             width: 250,
             decoration: BoxDecoration(
-              color: const Color(0xFF1A1A1A),
+              color: AppColors.bgSecondary,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white12),
+              border: Border.all(color: AppColors.border),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Padding(
                   padding: EdgeInsets.all(20.0),
-                  child: Text(
-                    'Sessions',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
+                  child: Text('Sessions',
+                      style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary)),
                 ),
-                const Divider(color: Colors.white24, height: 1),
+                const Divider(color: AppColors.border, height: 1),
                 Expanded(
                   child: _sessions.isEmpty
                       ? const Center(
-                          child: Text(
-                            "No chat history yet.",
-                            style: TextStyle(color: Colors.white54),
-                          ),
-                        )
+                          child: Text("No chat history yet.",
+                              style: TextStyle(color: AppColors.textMuted)))
                       : ListView.builder(
                           itemCount: _sessions.length,
                           itemBuilder: (context, index) {
                             final sessionName = _sessions[index];
-                            final isSelected = sessionName == _selectedSession;
-
+                            final isSelected =
+                                sessionName == _selectedSession;
                             return _buildChatListItem(
                               sessionName,
                               isSelected: isSelected,
@@ -292,94 +252,76 @@ class _OldChatsViewState extends State<OldChatsView> {
               ],
             ),
           ),
-
           const SizedBox(width: 32),
-
-          // --- RIGHT PANEL: The Active Chat Window ---
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
+                color: AppColors.bgSecondary,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white12),
+                border: Border.all(color: AppColors.border),
               ),
               child: _selectedSession == null
                   ? const Center(
-                      child: Text(
-                        "Select a session to view.",
-                        style: TextStyle(color: Colors.white54),
-                      ),
-                    )
+                      child: Text("Select a session to view.",
+                          style: TextStyle(color: AppColors.textMuted)))
                   : Column(
                       children: [
                         Container(
                           padding: const EdgeInsets.all(20),
                           decoration: const BoxDecoration(
                             border: Border(
-                              bottom: BorderSide(color: Colors.white24),
+                                bottom: BorderSide(color: AppColors.border)),
+                          ),
+                          child: Row(children: [
+                            const Icon(Icons.terminal,
+                                color: AppColors.orange),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                  'Anubix Command Terminal: $_selectedSession',
+                                  style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.orange),
+                                  overflow: TextOverflow.ellipsis),
                             ),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.terminal,
-                                color: Colors.lightBlueAccent,
-                              ),
-                              const SizedBox(width: 10),
-                              Text(
-                                'Anubix Command Terminal: $_selectedSession',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.lightBlueAccent,
-                                ),
-                              ),
-                            ],
-                          ),
+                          ]),
                         ),
-
-                        // --- REAL-TIME MESSAGES AREA ---
                         Expanded(
                           child: StreamBuilder<List<Map<String, dynamic>>>(
                             stream: _chatStream,
                             builder: (context, snapshot) {
                               if (snapshot.connectionState ==
-                                  ConnectionState.waiting)
+                                  ConnectionState.waiting) {
                                 return const Center(
-                                  child: CircularProgressIndicator(
-                                    color: Colors.lightBlueAccent,
-                                  ),
-                                );
-                              if (snapshot.hasError)
+                                    child: CircularProgressIndicator(
+                                        color: AppColors.orange));
+                              }
+                              if (snapshot.hasError) {
                                 return Center(
-                                  child: Text(
-                                    'Database Error: ${snapshot.error}',
-                                    style: const TextStyle(
-                                      color: Colors.redAccent,
-                                    ),
-                                  ),
-                                );
+                                    child: Text(
+                                        'Database Error: ${snapshot.error}',
+                                        style: const TextStyle(
+                                            color: AppColors.diseased)));
+                              }
                               final messages = snapshot.data ?? [];
-                              if (messages.isEmpty && !_isWaitingForAgent)
+                              if (messages.isEmpty && !_isWaitingForAgent) {
                                 return const Center(
-                                  child: Text(
-                                    'No messages yet. Send a command to Anubix.',
-                                    style: TextStyle(color: Colors.white54),
-                                  ),
-                                );
+                                    child: Text(
+                                        'No messages yet. Send a command to Anubix.',
+                                        style: TextStyle(
+                                            color: AppColors.textMuted)));
+                              }
 
                               WidgetsBinding.instance.addPostFrameCallback(
-                                (_) => _scrollToBottom(),
-                              );
+                                  (_) => _scrollToBottom());
 
                               return ListView.builder(
                                 controller: _scrollController,
                                 padding: const EdgeInsets.all(24),
-                                itemCount:
-                                    messages.length +
+                                itemCount: messages.length +
                                     (_isWaitingForAgent ? 1 : 0),
                                 itemBuilder: (context, index) {
-                                  // SHOW THE INLINE LOADING SPINNER
                                   if (index == messages.length &&
                                       _isWaitingForAgent) {
                                     return const Align(
@@ -390,87 +332,63 @@ class _OldChatsViewState extends State<OldChatsView> {
                                           height: 15,
                                           width: 15,
                                           child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.greenAccent,
-                                          ),
+                                              strokeWidth: 2,
+                                              color: AppColors.orange),
                                         ),
                                       ),
                                     );
                                   }
-
                                   final msg = messages[index];
                                   final isUser = msg['sender'] == 'user';
                                   final text = msg['message'] ?? '';
-                                  return _buildMessageBubble(
-                                    text,
-                                    isUser: isUser,
-                                  );
+                                  return _buildMessageBubble(text,
+                                      isUser: isUser);
                                 },
                               );
                             },
                           ),
                         ),
-
-                        // --- TEXT INPUT AREA ---
                         Container(
                           height: 50,
                           margin: const EdgeInsets.only(
-                            left: 20,
-                            right: 20,
-                            bottom: 20,
-                            top: 10,
-                          ),
+                              left: 20, right: 20, bottom: 20, top: 10),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF1E1E1E),
+                            color: AppColors.bgPrimary,
                             borderRadius: BorderRadius.circular(30),
-                            border: Border.all(color: Colors.white24),
+                            border:
+                                Border.all(color: AppColors.borderLight),
                           ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: _messageController,
-                                  style: const TextStyle(color: Colors.white),
-                                  onSubmitted: (_) => _sendMessage(),
-                                  decoration: const InputDecoration(
-                                    hintText: 'Talk to Anubix Agent...',
-                                    hintStyle: TextStyle(
-                                      color: Colors.white54,
-                                      fontSize: 14,
-                                    ),
-                                    border: InputBorder.none,
-                                    contentPadding: EdgeInsets.symmetric(
-                                      horizontal: 20,
-                                      vertical: 14,
-                                    ),
-                                  ),
+                          child: Row(children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _messageController,
+                                style: const TextStyle(
+                                    color: AppColors.textPrimary),
+                                onSubmitted: (_) => _sendMessage(),
+                                decoration: const InputDecoration(
+                                  hintText: 'Talk to Anubix Agent...',
+                                  hintStyle: TextStyle(
+                                      color: AppColors.textMuted,
+                                      fontSize: 14),
+                                  border: InputBorder.none,
+                                  contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 20, vertical: 14),
                                 ),
                               ),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.mic,
-                                  color: Colors.lightBlueAccent,
-                                  size: 20,
-                                ),
-                                onPressed: () {},
+                            ),
+                            Container(
+                              margin: const EdgeInsets.only(right: 6),
+                              decoration: const BoxDecoration(
+                                color: AppColors.orange,
+                                shape: BoxShape.circle,
                               ),
-                              Container(
-                                margin: const EdgeInsets.only(right: 6),
-                                decoration: const BoxDecoration(
-                                  color: Colors.lightBlueAccent,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: IconButton(
-                                  icon: const Icon(
-                                    Icons.send,
-                                    color: Colors.black,
-                                    size: 18,
-                                  ),
-                                  onPressed: _sendMessage,
-                                ),
+                              child: IconButton(
+                                icon: const Icon(Icons.send,
+                                    color: Colors.white, size: 18),
+                                onPressed: _sendMessage,
                               ),
-                            ],
-                          ),
+                            ),
+                          ]),
                         ),
                       ],
                     ),
@@ -489,23 +407,21 @@ class _OldChatsViewState extends State<OldChatsView> {
     return Container(
       decoration: BoxDecoration(
         color: isSelected
-            ? Colors.lightBlueAccent.withOpacity(0.1)
+            ? AppColors.orange.withAlpha(20)
             : Colors.transparent,
         border: Border(
           left: BorderSide(
-            color: isSelected ? Colors.lightBlueAccent : Colors.transparent,
+            color: isSelected ? AppColors.orange : Colors.transparent,
             width: 4,
           ),
         ),
       ),
       child: ListTile(
-        title: Text(
-          title,
-          style: TextStyle(
-            color: isSelected ? Colors.lightBlueAccent : Colors.white70,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-          ),
-        ),
+        title: Text(title,
+            style: TextStyle(
+              color: isSelected ? AppColors.orange : AppColors.textSecondary,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            )),
         onTap: onTap,
       ),
     );
@@ -520,22 +436,20 @@ class _OldChatsViewState extends State<OldChatsView> {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: isUser
-              ? Colors.lightBlueAccent.withOpacity(0.2)
-              : Colors.greenAccent.withOpacity(0.2),
+              ? AppColors.accent.withAlpha(30)
+              : AppColors.orange.withAlpha(20),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isUser
-                ? Colors.lightBlueAccent.withOpacity(0.5)
-                : Colors.greenAccent.withOpacity(0.5),
+                ? AppColors.accent.withAlpha(80)
+                : AppColors.orange.withAlpha(60),
           ),
         ),
-        child: Text(
-          text,
-          style: TextStyle(
-            color: isUser ? Colors.lightBlueAccent : Colors.greenAccent,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
+        child: Text(text,
+            style: TextStyle(
+              color: isUser ? AppColors.accent : AppColors.orangeLight,
+              fontWeight: FontWeight.w500,
+            )),
       ),
     );
   }

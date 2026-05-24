@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:fl_chart/fl_chart.dart';
+import '../theme.dart';
 
 class AnalyticsView extends StatefulWidget {
   const AnalyticsView({super.key});
@@ -55,12 +56,11 @@ class _AnalyticsViewState extends State<AnalyticsView> {
       final allData = await Supabase.instance.client
           .from('readings')
           .select('plant_location');
-      final uniqueLocs =
-          allData
-              .where((e) => e['plant_location'] != null)
-              .map((e) => e['plant_location'] as String)
-              .toSet()
-              .toList();
+      final uniqueLocs = allData
+          .where((e) => e['plant_location'] != null)
+          .map((e) => e['plant_location'] as String)
+          .toSet()
+          .toList();
 
       if (mounted) {
         setState(() {
@@ -77,7 +77,6 @@ class _AnalyticsViewState extends State<AnalyticsView> {
 
   @override
   Widget build(BuildContext context) {
-    // --- NEW METRICS CALCULATION ---
     int totalReadings = _readings.length;
     int diseases = 0;
 
@@ -94,159 +93,120 @@ class _AnalyticsViewState extends State<AnalyticsView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // --- HEADER & FILTERS ---
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'System Analytics',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
+                  Text('System Analytics',
+                      style: TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                          letterSpacing: 1.2)),
                   SizedBox(height: 4),
-                  Text(
-                    'Real-time agricultural telemetry & health tracking',
-                    style: TextStyle(color: Colors.white54, fontSize: 14),
-                  ),
+                  Text('Real-time agricultural telemetry & health tracking',
+                      style: TextStyle(
+                          color: AppColors.textSecondary, fontSize: 14)),
                 ],
               ),
-              Row(
-                children: [
-                  _buildFilter(
-                    _selectedLocation,
-                    _availableLocations,
-                    Colors.greenAccent,
-                    (v) {
-                      setState(() => _selectedLocation = v!);
-                      _fetchData();
-                    },
-                  ),
-                  const SizedBox(width: 16),
-                  _buildFilter(
-                    _selectedTimeRange,
-                    ['Today', 'Last 7 Days', 'Last 30 Days', 'All Time'],
-                    Colors.blueAccent,
-                    (v) {
-                      setState(() => _selectedTimeRange = v!);
-                      _fetchData();
-                    },
-                  ),
-                ],
-              ),
+              Row(children: [
+                _buildFilter(
+                  _selectedLocation,
+                  _availableLocations,
+                  AppColors.orange,
+                  (v) {
+                    setState(() => _selectedLocation = v!);
+                    _fetchData();
+                  },
+                ),
+                const SizedBox(width: 16),
+                _buildFilter(
+                  _selectedTimeRange,
+                  ['Today', 'Last 7 Days', 'Last 30 Days', 'All Time'],
+                  AppColors.accent,
+                  (v) {
+                    setState(() => _selectedTimeRange = v!);
+                    _fetchData();
+                  },
+                ),
+              ]),
             ],
           ),
           const SizedBox(height: 40),
-
-          // --- LOADING & EMPTY STATES ---
           if (_isLoading)
             const Padding(
               padding: EdgeInsets.only(top: 100),
               child: Center(
-                child: CircularProgressIndicator(
-                  color: Colors.greenAccent,
-                  strokeWidth: 2,
-                ),
-              ),
+                  child: CircularProgressIndicator(
+                      color: AppColors.orange, strokeWidth: 2)),
             )
           else if (_readings.isEmpty)
             const Padding(
               padding: EdgeInsets.only(top: 100),
               child: Center(
-                child: Text(
-                  'No telemetry data found for this period.',
-                  style: TextStyle(
-                    color: Colors.white54,
-                    fontSize: 18,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ),
+                  child: Text('No telemetry data found for this period.',
+                      style: TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 18,
+                          letterSpacing: 1))),
             )
           else ...[
-            // --- TOP METRICS CARDS ---
-            Row(
-              children: [
-                Expanded(
+            Row(children: [
+              Expanded(
                   child: _buildMetricCard(
-                    'Total Scans',
-                    '$totalReadings',
-                    Icons.radar,
-                    Colors.blueAccent,
-                  ),
-                ),
-                const SizedBox(width: 24),
-                Expanded(
+                      'Total Scans', '$totalReadings', Icons.radar,
+                      AppColors.accent)),
+              const SizedBox(width: 24),
+              Expanded(
                   child: _buildMetricCard(
-                    'Healthy Crops',
-                    '$healthy',
-                    Icons.eco,
-                    Colors.greenAccent,
-                  ),
-                ),
-                const SizedBox(width: 24),
-                Expanded(
+                      'Healthy Crops', '$healthy', Icons.eco,
+                      AppColors.healthy)),
+              const SizedBox(width: 24),
+              Expanded(
                   child: _buildMetricCard(
-                    'Pathogen Alerts',
-                    '$diseases',
-                    Icons.coronavirus,
-                    diseases > 0 ? Colors.redAccent : Colors.white54,
-                  ),
-                ),
-              ],
-            ),
+                      'Alerts',
+                      '$diseases',
+                      Icons.coronavirus,
+                      diseases > 0 ? AppColors.diseased : AppColors.textMuted)),
+            ]),
             const SizedBox(height: 40),
-
-            // --- CHARTS & ALERTS ROW ---
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // PIE CHART: Health Distribution
                 Expanded(
                   flex: 2,
                   child: Container(
                     height: 380,
                     padding: const EdgeInsets.all(30),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF161616),
+                      color: AppColors.bgSecondary,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white12),
+                      border: Border.all(color: AppColors.border),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 10,
-                          offset: const Offset(0, 5),
-                        ),
+                            color: Colors.black.withAlpha(40),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5)),
                       ],
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Crop Health Distribution',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
+                        const Text('Crop Health Distribution',
+                            style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textPrimary)),
                         const SizedBox(height: 8),
                         Text(
-                          'Overall Health Rate: ${healthRate.toStringAsFixed(1)}%',
-                          style: TextStyle(
-                            color:
-                                healthRate > 80
-                                    ? Colors.greenAccent
-                                    : Colors.orangeAccent,
-                            fontSize: 14,
-                          ),
-                        ),
+                            'Overall Health Rate: ${healthRate.toStringAsFixed(1)}%',
+                            style: TextStyle(
+                                color: healthRate > 80
+                                    ? AppColors.healthy
+                                    : AppColors.orange,
+                                fontSize: 14)),
                         const SizedBox(height: 30),
                         Expanded(
                           child: Stack(
@@ -260,55 +220,43 @@ class _AnalyticsViewState extends State<AnalyticsView> {
                                   sections: [
                                     if (healthy > 0)
                                       PieChartSectionData(
-                                        color: Colors.greenAccent.withOpacity(
-                                          0.8,
-                                        ),
+                                        color: AppColors.healthy.withAlpha(200),
                                         value: healthy.toDouble(),
                                         title:
                                             '${((healthy / totalReadings) * 100).toStringAsFixed(0)}%',
                                         radius: 40,
                                         titleStyle: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.black87,
-                                        ),
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white),
                                       ),
                                     if (diseases > 0)
                                       PieChartSectionData(
-                                        color: Colors.redAccent.withOpacity(
-                                          0.8,
-                                        ),
+                                        color:
+                                            AppColors.diseased.withAlpha(200),
                                         value: diseases.toDouble(),
                                         title:
                                             '${((diseases / totalReadings) * 100).toStringAsFixed(0)}%',
-                                        radius:
-                                            45, // Slightly larger to pop out
+                                        radius: 45,
                                         titleStyle: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                        ),
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white),
                                       ),
                                   ],
                                 ),
                               ),
-                              // Inner label
                               Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(
-                                    Icons.monitor_heart,
-                                    color: Colors.white.withOpacity(0.5),
-                                    size: 30,
-                                  ),
+                                  Icon(Icons.monitor_heart,
+                                      color: AppColors.textMuted.withAlpha(120),
+                                      size: 30),
                                   const SizedBox(height: 4),
-                                  const Text(
-                                    'Status',
-                                    style: TextStyle(
-                                      color: Colors.white54,
-                                      fontSize: 12,
-                                    ),
-                                  ),
+                                  const Text('Status',
+                                      style: TextStyle(
+                                          color: AppColors.textMuted,
+                                          fontSize: 12)),
                                 ],
                               ),
                             ],
@@ -318,24 +266,20 @@ class _AnalyticsViewState extends State<AnalyticsView> {
                     ),
                   ),
                 ),
-
                 const SizedBox(width: 24),
-
-                // RECENT ALERTS LIST
                 Expanded(
                   flex: 3,
                   child: Container(
                     height: 380,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF161616),
+                      color: AppColors.bgSecondary,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white12),
+                      border: Border.all(color: AppColors.border),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 10,
-                          offset: const Offset(0, 5),
-                        ),
+                            color: Colors.black.withAlpha(40),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5)),
                       ],
                     ),
                     child: Column(
@@ -346,156 +290,118 @@ class _AnalyticsViewState extends State<AnalyticsView> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text(
-                                'Recent Pathogen Alerts',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
+                              const Text('Recent Alerts',
+                                  style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.textPrimary)),
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 4,
-                                ),
+                                    horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: Colors.redAccent.withOpacity(0.2),
+                                  color: AppColors.diseased.withAlpha(30),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: Text(
-                                  '$diseases Active',
-                                  style: const TextStyle(
-                                    color: Colors.redAccent,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
+                                child: Text('$diseases Active',
+                                    style: const TextStyle(
+                                        color: AppColors.diseased,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold)),
                               ),
                             ],
                           ),
                         ),
                         Expanded(
-                          child:
-                              diseases == 0
-                                  ? const Center(
-                                    child: Text(
-                                      '✅ No recent diseases detected. Crops are healthy!',
+                          child: diseases == 0
+                              ? const Center(
+                                  child: Text(
+                                      'No recent diseases detected. Crops are healthy!',
                                       style: TextStyle(
-                                        color: Colors.greenAccent,
-                                        fontSize: 16,
+                                          color: AppColors.healthy,
+                                          fontSize: 16)))
+                              : ListView.builder(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16),
+                                  itemCount: _readings
+                                      .where(
+                                          (r) => r['disease_detected'] == true)
+                                      .length,
+                                  itemBuilder: (context, index) {
+                                    final alert = _readings
+                                        .where((r) =>
+                                            r['disease_detected'] == true)
+                                        .toList()[index];
+                                    final dt = DateTime.parse(
+                                            alert['recorded_at'])
+                                        .toLocal();
+                                    return Container(
+                                      margin:
+                                          const EdgeInsets.only(bottom: 12),
+                                      decoration: BoxDecoration(
+                                        color:
+                                            AppColors.diseased.withAlpha(12),
+                                        borderRadius:
+                                            BorderRadius.circular(12),
+                                        border: Border.all(
+                                            color: AppColors.diseased
+                                                .withAlpha(40)),
                                       ),
-                                    ),
-                                  )
-                                  : ListView.builder(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 0,
-                                    ),
-                                    itemCount:
-                                        _readings
-                                            .where(
-                                              (r) =>
-                                                  r['disease_detected'] == true,
-                                            )
-                                            .length,
-                                    itemBuilder: (context, index) {
-                                      final alert =
-                                          _readings
-                                              .where(
-                                                (r) =>
-                                                    r['disease_detected'] ==
-                                                    true,
-                                              )
-                                              .toList()[index];
-                                      final dt =
-                                          DateTime.parse(
-                                            alert['recorded_at'],
-                                          ).toLocal();
-                                      return Container(
-                                        margin: const EdgeInsets.only(
-                                          bottom: 12,
+                                      child: ListTile(
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                                horizontal: 20, vertical: 8),
+                                        leading: Container(
+                                          padding: const EdgeInsets.all(10),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.diseased
+                                                .withAlpha(30),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(Icons.bug_report,
+                                              color: AppColors.diseased,
+                                              size: 20),
                                         ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.redAccent.withOpacity(
-                                            0.05,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                          border: Border.all(
-                                            color: Colors.redAccent.withOpacity(
-                                              0.2,
-                                            ),
-                                          ),
-                                        ),
-                                        child: ListTile(
-                                          contentPadding:
-                                              const EdgeInsets.symmetric(
-                                                horizontal: 20,
-                                                vertical: 8,
-                                              ),
-                                          leading: Container(
-                                            padding: const EdgeInsets.all(10),
-                                            decoration: BoxDecoration(
-                                              color: Colors.redAccent
-                                                  .withOpacity(0.2),
-                                              shape: BoxShape.circle,
-                                            ),
-                                            child: const Icon(
-                                              Icons.bug_report,
-                                              color: Colors.redAccent,
-                                              size: 20,
-                                            ),
-                                          ),
-                                          title: Text(
+                                        title: Text(
                                             alert['disease_name'] ??
                                                 'Unknown Pathogen',
                                             style: const TextStyle(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 16,
-                                            ),
-                                          ),
-                                          subtitle: Padding(
-                                            padding: const EdgeInsets.only(
-                                              top: 6.0,
-                                            ),
-                                            child: Text(
+                                                color: AppColors.textPrimary,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 16)),
+                                        subtitle: Padding(
+                                          padding:
+                                              const EdgeInsets.only(top: 6.0),
+                                          child: Text(
                                               'Zone: ${alert['plant_location']}',
                                               style: const TextStyle(
-                                                color: Colors.white70,
-                                                fontSize: 13,
-                                              ),
-                                            ),
-                                          ),
-                                          trailing: Column(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.end,
-                                            children: [
-                                              Text(
-                                                '${dt.month}/${dt.day}',
+                                                  color:
+                                                      AppColors.textSecondary,
+                                                  fontSize: 13)),
+                                        ),
+                                        trailing: Column(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.end,
+                                          children: [
+                                            Text('${dt.month}/${dt.day}',
                                                 style: const TextStyle(
-                                                  color: Colors.white54,
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
+                                                    color:
+                                                        AppColors.textMuted,
+                                                    fontSize: 12)),
+                                            const SizedBox(height: 4),
+                                            Text(
                                                 '${dt.hour}:${dt.minute.toString().padLeft(2, '0')}',
                                                 style: const TextStyle(
-                                                  color: Colors.white30,
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
+                                                    color:
+                                                        AppColors.textMuted,
+                                                    fontSize: 12)),
+                                          ],
                                         ),
-                                      );
-                                    },
-                                  ),
+                                      ),
+                                    );
+                                  },
+                                ),
                         ),
                         const SizedBox(height: 12),
                       ],
@@ -511,7 +417,6 @@ class _AnalyticsViewState extends State<AnalyticsView> {
     );
   }
 
-  // --- MODERN DROPDOWN FILTER ---
   Widget _buildFilter(
     String val,
     List<String> items,
@@ -522,31 +427,27 @@ class _AnalyticsViewState extends State<AnalyticsView> {
       height: 40,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF222222),
-        borderRadius: BorderRadius.circular(20), // Pill shape
-        border: Border.all(color: Colors.white12),
+        color: AppColors.bgCard,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
-          dropdownColor: const Color(0xFF222222),
-          icon: Icon(Icons.keyboard_arrow_down, color: accentColor, size: 18),
+          dropdownColor: AppColors.bgCard,
+          icon:
+              Icon(Icons.keyboard_arrow_down, color: accentColor, size: 18),
           style: TextStyle(
-            color: accentColor,
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-          ),
+              color: accentColor, fontWeight: FontWeight.w600, fontSize: 13),
           value: items.contains(val) ? val : items.first,
-          items:
-              items
-                  .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                  .toList(),
+          items: items
+              .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+              .toList(),
           onChanged: fn,
         ),
       ),
     );
   }
 
-  // --- MODERN METRIC CARD ---
   Widget _buildMetricCard(
     String title,
     String val,
@@ -556,15 +457,14 @@ class _AnalyticsViewState extends State<AnalyticsView> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFF161616),
+        color: AppColors.bgSecondary,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white12),
+        border: Border.all(color: AppColors.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.15),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
+              color: Colors.black.withAlpha(30),
+              blurRadius: 10,
+              offset: const Offset(0, 4)),
         ],
       ),
       child: Column(
@@ -573,18 +473,15 @@ class _AnalyticsViewState extends State<AnalyticsView> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.white54,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              Text(title,
+                  style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500)),
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withAlpha(25),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, color: color, size: 20),
@@ -592,15 +489,13 @@ class _AnalyticsViewState extends State<AnalyticsView> {
             ],
           ),
           const SizedBox(height: 16),
-          Text(
-            val,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 36,
-              fontWeight: FontWeight.bold,
-              shadows: [Shadow(color: color.withOpacity(0.4), blurRadius: 10)],
-            ),
-          ),
+          Text(val,
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 36,
+                fontWeight: FontWeight.bold,
+                shadows: [Shadow(color: color.withAlpha(80), blurRadius: 10)],
+              )),
         ],
       ),
     );
