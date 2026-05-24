@@ -1,0 +1,35 @@
+{
+    "name": "ANUBIX — Smart Agriculture Dashboard",
+    "short_name": "ANUBIX",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#0B1F0E",
+    "theme_color": "#0B1F0E",
+    "description": "AI-powered crop monitoring and agricultural robot control. A collaboration between ANUBIX Team and SI-Ware Systems.",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}
