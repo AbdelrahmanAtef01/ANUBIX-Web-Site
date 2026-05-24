@@ -11,6 +11,7 @@ class AnalyticsView extends StatefulWidget {
 }
 
 class _AnalyticsViewState extends State<AnalyticsView> {
+  final _currentUser = Supabase.instance.client.auth.currentUser;
   List<Map<String, dynamic>> _readings = [];
   bool _isLoading = true;
 
@@ -25,10 +26,29 @@ class _AnalyticsViewState extends State<AnalyticsView> {
   }
 
   Future<void> _fetchData() async {
-    if (!mounted) return;
+    if (!mounted || _currentUser == null) return;
     setState(() => _isLoading = true);
 
     try {
+      final taskData = await Supabase.instance.client
+          .from('task_history')
+          .select('task_id')
+          .eq('user_id', _currentUser!.id);
+
+      final taskIds =
+          taskData.map((t) => t['task_id'] as String).toList();
+
+      if (taskIds.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _readings = [];
+            _availableLocations = ['All Locations'];
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+
       DateTime now = DateTime.now().toUtc();
       DateTime startDate;
 
@@ -45,6 +65,7 @@ class _AnalyticsViewState extends State<AnalyticsView> {
       var query = Supabase.instance.client
           .from('readings')
           .select()
+          .inFilter('task_id', taskIds)
           .gte('recorded_at', startDate.toIso8601String());
 
       if (_selectedLocation != 'All Locations') {
@@ -53,10 +74,11 @@ class _AnalyticsViewState extends State<AnalyticsView> {
 
       final data = await query.order('recorded_at', ascending: true);
 
-      final allData = await Supabase.instance.client
+      final allUserReadings = await Supabase.instance.client
           .from('readings')
-          .select('plant_location');
-      final uniqueLocs = allData
+          .select('plant_location')
+          .inFilter('task_id', taskIds);
+      final uniqueLocs = allUserReadings
           .where((e) => e['plant_location'] != null)
           .map((e) => e['plant_location'] as String)
           .toSet()

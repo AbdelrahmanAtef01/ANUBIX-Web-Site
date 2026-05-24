@@ -129,6 +129,7 @@ class _FarmViewState extends State<FarmView> {
   bool _isDriving = false;
   int _animationSpeed = 1200;
   String? _activeRobotId;
+  String? _subscribedRobotId;
   String? _selectedPlantZone;
   int? _selectedRow;
   int? _selectedCol;
@@ -195,10 +196,17 @@ class _FarmViewState extends State<FarmView> {
         .stream(primaryKey: ['id'])
         .eq('id', _currentUser?.id ?? '')
         .limit(1);
+  }
+
+  void _subscribeToRobot(String robotId) {
+    if (_subscribedRobotId == robotId) return;
+    _robotSubscription?.cancel();
+    _subscribedRobotId = robotId;
 
     _robotSubscription = Supabase.instance.client
         .from('robots')
         .stream(primaryKey: ['robot_id'])
+        .eq('robot_id', robotId)
         .listen((data) {
       if (data.isNotEmpty) {
         final robot = data.first;
@@ -658,6 +666,11 @@ class _FarmViewState extends State<FarmView> {
         _cachedDistCols =
             (profile['distance_between_columns'] as num?)?.toDouble() ??
                 _cachedDistRows;
+
+        final profileRobotId = profile['robot_id'] as String?;
+        if (profileRobotId != null) {
+          _subscribeToRobot(profileRobotId);
+        }
 
         return Column(children: [
           Container(
