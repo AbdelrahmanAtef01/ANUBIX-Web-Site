@@ -999,9 +999,8 @@ class _FarmViewState extends State<FarmView> {
                 _selectedCol = c;
               }),
               child: Container(
-                color: Colors.transparent,
                 clipBehavior: Clip.hardEdge,
-                decoration: const BoxDecoration(),
+                decoration: const BoxDecoration(color: Colors.transparent),
                 child: Stack(children: [
                   Center(
                       child: _buildTomatoPlant(
