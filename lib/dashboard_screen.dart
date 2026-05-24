@@ -5,6 +5,7 @@ import 'views/tasks_view.dart';
 import 'views/analytics_view.dart';
 import 'views/old_chats_view.dart';
 import 'views/history_view.dart';
+import 'views/config_view.dart';
 import 'theme.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -64,6 +65,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return const HistoryView();
       case 4:
         return const AnalyticsView();
+      case 5:
+        return const ConfigView();
       default:
         return const FarmView();
     }
@@ -181,6 +184,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   icon: Icon(Icons.history), label: Text('History')),
               NavigationRailDestination(
                   icon: Icon(Icons.bar_chart), label: Text('Analytics')),
+              NavigationRailDestination(
+                  icon: Icon(Icons.settings), label: Text('Config')),
             ],
           ),
           Container(width: 1, color: AppColors.border),
