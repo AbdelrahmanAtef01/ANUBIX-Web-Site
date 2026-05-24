@@ -48,9 +48,11 @@ class _LoginViewState extends State<LoginView> {
         await Supabase.instance.client.from('profiles').upsert({
           'id': res.user!.id,
           'email': res.user!.email,
-          'grid_rows': 4,
-          'grid_columns': 6,
-          'distance_between_plants': 100,
+          'grid_rows': 3,
+          'grid_columns': 3,
+          'distance_between_rows': 10,
+          'distance_between_columns': 10,
+          'home_location': '0,1',
         });
         if (mounted) {
           Navigator.of(context).pushReplacement(

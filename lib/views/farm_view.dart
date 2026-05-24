@@ -612,9 +612,40 @@ class _FarmViewState extends State<FarmView> {
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _profileStream,
       builder: (context, profileSnap) {
-        if (!profileSnap.hasData || profileSnap.data!.isEmpty) {
+        if (profileSnap.connectionState == ConnectionState.waiting) {
           return const Center(
               child: CircularProgressIndicator(color: AppColors.orange));
+        }
+
+        if (!profileSnap.hasData || profileSnap.data!.isEmpty) {
+          return Center(
+            child: Container(
+              padding: const EdgeInsets.all(40),
+              decoration: BoxDecoration(
+                color: AppColors.bgSecondary,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: const Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.settings_rounded,
+                      color: AppColors.orange, size: 48),
+                  SizedBox(height: 16),
+                  Text('Farm Not Configured',
+                      style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold)),
+                  SizedBox(height: 8),
+                  Text(
+                      'Go to the Config tab to set up your grid layout and robot.',
+                      style: TextStyle(
+                          color: AppColors.textSecondary, fontSize: 14)),
+                ],
+              ),
+            ),
+          );
         }
 
         final profile = profileSnap.data!.first;

@@ -17,11 +17,11 @@ class _ConfigViewState extends State<ConfigView> {
   final _colsController = TextEditingController();
   final _distRowsController = TextEditingController();
   final _distColsController = TextEditingController();
-  final _homeLocationController = TextEditingController();
   final _robotNameController = TextEditingController();
 
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _profileExists = false;
   String? _robotId;
   String? _robotStatus;
   String? _robotCurrentLocation;
@@ -38,7 +38,6 @@ class _ConfigViewState extends State<ConfigView> {
     _colsController.dispose();
     _distRowsController.dispose();
     _distColsController.dispose();
-    _homeLocationController.dispose();
     _robotNameController.dispose();
     super.dispose();
   }
@@ -52,29 +51,39 @@ class _ConfigViewState extends State<ConfigView> {
           .from('profiles')
           .select()
           .eq('id', _currentUser!.id)
-          .single();
+          .maybeSingle();
 
-      _rowsController.text = (profile['grid_rows'] ?? 3).toString();
-      _colsController.text = (profile['grid_columns'] ?? 3).toString();
-      _distRowsController.text =
-          (profile['distance_between_rows'] ?? '').toString();
-      _distColsController.text =
-          (profile['distance_between_columns'] ?? '').toString();
-      _homeLocationController.text = profile['home_location'] ?? '0,0';
-      _robotId = profile['robot_id'];
+      if (profile != null) {
+        _profileExists = true;
+        _rowsController.text = (profile['grid_rows'] ?? 3).toString();
+        _colsController.text = (profile['grid_columns'] ?? 3).toString();
+        final distRows = profile['distance_between_rows'];
+        final distCols = profile['distance_between_columns'];
+        _distRowsController.text =
+            distRows != null ? distRows.toString() : '';
+        _distColsController.text =
+            distCols != null ? distCols.toString() : '';
+        _robotId = profile['robot_id'];
 
-      if (_robotId != null) {
-        final robot = await Supabase.instance.client
-            .from('robots')
-            .select()
-            .eq('robot_id', _robotId!)
-            .maybeSingle();
+        if (_robotId != null) {
+          final robot = await Supabase.instance.client
+              .from('robots')
+              .select()
+              .eq('robot_id', _robotId!)
+              .maybeSingle();
 
-        if (robot != null) {
-          _robotNameController.text = robot['name'] ?? '';
-          _robotStatus = robot['status'];
-          _robotCurrentLocation = robot['current_location'];
+          if (robot != null) {
+            _robotNameController.text = robot['name'] ?? '';
+            _robotStatus = robot['status'];
+            _robotCurrentLocation = robot['current_location'];
+          }
         }
+      } else {
+        _profileExists = false;
+        _rowsController.text = '3';
+        _colsController.text = '3';
+        _distRowsController.text = '10';
+        _distColsController.text = '10';
       }
     } catch (e) {
       debugPrint('Error loading profile: $e');
@@ -99,14 +108,14 @@ class _ConfigViewState extends State<ConfigView> {
             .insert({
               'name': robotName,
               'status': 'active',
-              'current_location': _homeLocationController.text.trim(),
+              'current_location': '0,1',
             })
             .select()
             .single();
         robotId = newRobot['robot_id'];
         _robotId = robotId;
         _robotStatus = 'active';
-        _robotCurrentLocation = _homeLocationController.text.trim();
+        _robotCurrentLocation = '0,1';
       } else {
         final robotName = _robotNameController.text.trim();
         if (robotName.isNotEmpty) {
@@ -119,14 +128,17 @@ class _ConfigViewState extends State<ConfigView> {
       final distRows = double.tryParse(_distRowsController.text.trim());
       final distCols = double.tryParse(_distColsController.text.trim());
 
-      await Supabase.instance.client.from('profiles').update({
+      await Supabase.instance.client.from('profiles').upsert({
+        'id': _currentUser!.id,
+        'email': _currentUser!.email!,
         'grid_rows': int.tryParse(_rowsController.text.trim()) ?? 3,
         'grid_columns': int.tryParse(_colsController.text.trim()) ?? 3,
         'distance_between_rows': distRows,
         'distance_between_columns': distCols,
-        'home_location': _homeLocationController.text.trim(),
+        'home_location': '0,1',
         'robot_id': robotId,
-      }).eq('id', _currentUser!.id);
+      });
+      _profileExists = true;
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -241,13 +253,6 @@ class _ConfigViewState extends State<ConfigView> {
           hint: '3',
           icon: Icons.view_column_rounded,
           isInt: true,
-        ),
-        const SizedBox(height: 20),
-        _buildField(
-          label: 'Home Location',
-          controller: _homeLocationController,
-          hint: '0,0',
-          icon: Icons.home_rounded,
         ),
       ],
     );
