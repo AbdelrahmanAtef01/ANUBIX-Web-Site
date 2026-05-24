@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme.dart';
+import 'login_view.dart';
 
 class ConfigView extends StatefulWidget {
   const ConfigView({super.key});
@@ -229,6 +230,32 @@ class _ConfigViewState extends State<ConfigView> {
           ),
           const SizedBox(height: 24),
           _buildRobotSection(),
+          const SizedBox(height: 40),
+          Center(
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.diseased,
+                side: const BorderSide(color: AppColors.diseased),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              icon: const Icon(Icons.logout_rounded, size: 18),
+              label: const Text('LOGOUT',
+                  style:
+                      TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1)),
+              onPressed: () async {
+                await Supabase.instance.client.auth.signOut();
+                if (context.mounted) {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const LoginView()),
+                    (route) => false,
+                  );
+                }
+              },
+            ),
+          ),
         ],
       ),
     );

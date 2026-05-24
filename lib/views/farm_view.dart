@@ -340,6 +340,18 @@ class _FarmViewState extends State<FarmView> {
     }
   }
 
+  TextDirection _textDirection(String text) {
+    final trimmed = text.trimLeft();
+    if (trimmed.isEmpty) return TextDirection.ltr;
+    final first = trimmed.codeUnitAt(0);
+    return (first >= 0x0600 && first <= 0x06FF) ||
+            (first >= 0x0750 && first <= 0x077F) ||
+            (first >= 0xFB50 && first <= 0xFDFF) ||
+            (first >= 0xFE70 && first <= 0xFEFF)
+        ? TextDirection.rtl
+        : TextDirection.ltr;
+  }
+
   void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_scrollController.hasClients) {
@@ -879,6 +891,7 @@ class _FarmViewState extends State<FarmView> {
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(msg['text']!,
+                              textDirection: _textDirection(msg['text']!),
                               style: TextStyle(
                                   color: isUser
                                       ? AppColors.accent
